@@ -1,10 +1,14 @@
+use std::path::Path;
+
+use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, Parser, error::ErrorKind};
 use regolith_config::{
-    cli_args::{self, CLIArguments},
-    eject_config, get_session_type, search_config,
+    FullConfig,
+    cli_args::{self, CLIArguments, Session},
+    get_session_type, get_trawl_resources, search_config,
 };
 
-fn main() {
+fn main() -> Result<()> {
     let args = CLIArguments::parse();
 
     let session = match args.session() {
@@ -32,9 +36,23 @@ fn main() {
         },
     };
 
-    match args.sub_command() {
-        cli_args::OperationType::Search(search_args) => search_config(search_args, session),
-        cli_args::OperationType::Eject(eject_args) => eject_config(eject_args, session),
-        cli_args::OperationType::Reconcile { name } => todo!(),
+    let session_mappings = [
+        (Session::X11, Path::new("/etc/regolith/i3/config")),
+        (Session::Wayland, Path::new("/etc/regolith/sway/config")),
+    ];
+    let wm_config = FullConfig::new_from_session(session, &session_mappings)?;
+
+    let trawl_resources = get_trawl_resources().context("Failed to get Trawl resources")?;
+    let result = match args.sub_command() {
+        cli_args::OperationType::Search(search_args) => {
+            search_config(search_args, &wm_config, &trawl_resources)
+        }
+
+        cli_args::OperationType::Eject(_eject_args) => todo!(),
+        cli_args::OperationType::Reconcile { .. } => todo!(),
     }
+    .ok_or(anyhow!("Operation did not return any result"))?;
+
+    println!("{}", result);
+    Ok(())
 }

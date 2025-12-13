@@ -43,7 +43,6 @@ pub enum Session {
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum FilterType {
-    Package,
     Bindings,
     Keyword,
     Resource,
@@ -58,6 +57,13 @@ pub struct SearchArgs {
 }
 
 impl SearchArgs {
+    pub fn new(pattern: &str, filter: FilterType) -> Self {
+        Self {
+            filter,
+            pattern: pattern.into(),
+        }
+    }
+
     pub fn filter(&self) -> FilterType {
         self.filter
     }
