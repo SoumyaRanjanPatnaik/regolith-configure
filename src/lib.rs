@@ -1,9 +1,11 @@
 pub mod cli_args;
-use anyhow::{Context, Result, anyhow};
-use cli_args::{EjectArgs, SearchArgs, Session};
+pub mod config;
+pub mod resources;
+pub mod search;
+use anyhow::{anyhow, Context, Result};
+use cli_args::{EjectArgs, Session};
 use glob::glob;
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
     env,
     fmt::Display,
@@ -11,15 +13,11 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
-use zbus::{
-    blocking::{Connection, fdo::PropertiesProxy},
-    names::InterfaceName,
-};
 
 /// Represents a config file that is imported when loading
 /// the main configration
 #[derive(Debug)]
-struct ConfigPartial {
+pub struct ConfigPartial {
     /// Location of the config file
     file_name: PathBuf,
     /// Contents of the config file
@@ -127,7 +125,7 @@ impl ConfigPartial {
     pub fn config_bindings<'a>(
         &'a self,
         variables: &BTreeMap<String, String>,
-    ) -> impl Iterator<Item = BindingDef<'a>> {
+    ) -> impl Iterator<Item = search::bindings::BindingDef<'a>> {
         // Enumerate lines with 1-indexed line numbers
         self.config.lines().enumerate().filter_map(|(index, line)| {
             let mut args = line
@@ -140,9 +138,9 @@ impl ConfigPartial {
             if command != "bindsym" && command != "bindcode" {
                 return None;
             }
-            let resolved_binding = normalize_binding(binding, variables);
+            let resolved_binding = search::bindings::normalize_binding(binding, variables);
 
-            Some(BindingDef {
+            Some(search::bindings::BindingDef {
                 orig_binding: binding,
                 normalized_binding: resolved_binding,
                 src_config: self,
@@ -253,149 +251,14 @@ impl FullConfig {
     fn get_all_bindings(
         &'_ self,
         variables: &BTreeMap<String, String>,
-    ) -> BindingsSearchResult<'_> {
+    ) -> search::bindings::BindingsSearchResult<'_> {
         let bindings: Vec<_> = self
             .partials
             .iter()
             .flat_map(|partial| partial.config_bindings(variables))
             .collect();
 
-        BindingsSearchResult::from(bindings)
-    }
-}
-
-#[derive(Debug)]
-struct BindingDef<'a> {
-    #[allow(dead_code)]
-    orig_binding: &'a str,
-    normalized_binding: Cow<'a, str>,
-    src_config: &'a ConfigPartial,
-    line_no: usize,
-    line_contents: String,
-}
-
-impl<'a> Display for BindingDef<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} - Line {}:\n\t{}",
-            self.src_config.file_name.to_string_lossy(),
-            self.line_no,
-            self.line_contents
-        )
-    }
-}
-
-#[derive(Debug)]
-struct BindingsSearchResult<'a>(Vec<BindingDef<'a>>);
-
-impl<'a> Display for BindingsSearchResult<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let bindings_string = self
-            .0
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-        write!(f, "{}", bindings_string)
-    }
-}
-
-impl<'a> From<Vec<BindingDef<'a>>> for BindingsSearchResult<'a> {
-    fn from(value: Vec<BindingDef<'a>>) -> Self {
-        Self(value)
-    }
-}
-
-/// Normalizes a binding by substituting variables with their corresponding values
-///
-/// * `binding`: The search pattern representing the binding
-/// * `variables`: Configuration variables for resolving bindings
-fn normalize_binding<'a>(binding: &'a str, variables: &BTreeMap<String, String>) -> Cow<'a, str> {
-    let mut normalized_binding = Cow::Borrowed(binding.trim());
-
-    while normalized_binding.contains('$') {
-        let updated_binding = normalized_binding
-            .split('+')
-            .map(|key| key.trim())
-            .map(|key| {
-                // Only consider keys that are variables
-                if !key.starts_with("$") || key.len() < 2 {
-                    return key;
-                }
-
-                // Only consider the part after the '$' sign
-                let var_name = &key[1..];
-
-                variables
-                    .get(var_name)
-                    .map(|var_value| var_value.as_str())
-                    .unwrap_or(key)
-            })
-            .collect::<Vec<_>>()
-            .join("+");
-
-        if updated_binding == normalized_binding {
-            break;
-        }
-
-        normalized_binding = Cow::Owned(updated_binding);
-    }
-    normalized_binding
-}
-
-/// Searches for keybinding definitions matching the user's search query
-/// * `binding`: The search pattern representing the binding
-/// * `config`: The full Regolith configuration
-/// * `trawl_resources`: Resource values set in trawlcat that represent the bindings
-fn search_binding_result<'a>(
-    binding: &str,
-    config: &'a FullConfig,
-    trawl_resources: &HashMap<String, String>,
-) -> impl Display + 'a {
-    let variables = config.get_all_variables(trawl_resources);
-    let matching_bindings: Vec<_> = config
-        .get_all_bindings(&variables)
-        .0
-        .into_iter()
-        .filter_map(|binding_def| {
-            let does_normalized_binding_match = binding_def
-                .normalized_binding
-                .to_lowercase()
-                .split('+')
-                .zip(binding.to_lowercase().split('+'))
-                .all(|(a, b)| a == b);
-
-            let does_raw_binding_match = binding_def
-                .orig_binding
-                .to_lowercase()
-                .contains(&binding.to_lowercase());
-
-            if does_normalized_binding_match || does_raw_binding_match {
-                Some(binding_def)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    BindingsSearchResult::from(matching_bindings)
-}
-
-/// Filters packages and files related to user's search query
-pub fn search_config<'a>(
-    args: &SearchArgs,
-    config: &'a FullConfig,
-    trawl_resources: &HashMap<String, String>,
-) -> Option<Box<dyn Display + 'a>> {
-    match args.filter() {
-        cli_args::FilterType::Bindings => Some(Box::new(search_binding_result(
-            args.pattern(),
-            config,
-            trawl_resources,
-        ))),
-        cli_args::FilterType::Keyword => todo!(),
-        cli_args::FilterType::Resource => todo!(),
+        search::bindings::BindingsSearchResult::from(bindings)
     }
 }
 
@@ -415,22 +278,6 @@ pub fn get_session_type() -> Option<Session> {
             _ => None,
         };
     });
-}
-
-pub fn get_trawl_resources() -> Result<HashMap<String, String>> {
-    let connection = Connection::session().context("Failed to connect to D-Bus session bus")?;
-    let props = PropertiesProxy::builder(&connection)
-        .destination("org.regolith.Trawl")?
-        .path("/org/regolith/Trawl")?
-        .build()
-        .context("Failed to connect to Trawl D-Bus service")?;
-
-    let resources_map: HashMap<String, String> = props
-        .get(InterfaceName::try_from("org.regolith.trawl1")?, "Resources")
-        .context("Failed to read property 'Resources' from Trawl D-Bus service")?
-        .try_into()?;
-
-    Ok(resources_map)
 }
 
 #[cfg(test)]
@@ -554,11 +401,11 @@ mod tests {
         variables.insert("mod".to_string(), "Super".to_string());
         variables.insert("alt".to_string(), "Alt".to_string());
         let binding = "$mod+Shift+X";
-        let normalized = normalize_binding(binding, &variables);
+        let normalized = search::bindings::normalize_binding(binding, &variables);
         assert_eq!(normalized, "Super+Shift+X");
 
         let binding2 = "$alt+F4";
-        let normalized2 = normalize_binding(binding2, &variables);
+        let normalized2 = search::bindings::normalize_binding(binding2, &variables);
         assert_eq!(normalized2, "Alt+F4");
     }
 
@@ -570,7 +417,8 @@ mod tests {
         let mut trawl_resources = HashMap::new();
         trawl_resources.insert("mod".to_string(), "Super".to_string());
         trawl_resources.insert("wm.launch.terminall".to_string(), "Enter".to_string());
-        let search_result = search_binding_result("Super+Enter", &full_config, &trawl_resources);
+        let search_result =
+            search::bindings::search_binding_result("Super+Enter", &full_config, &trawl_resources);
         let result_string = format!("{}", search_result);
         assert!(result_string.contains("bindings.conf"));
     }

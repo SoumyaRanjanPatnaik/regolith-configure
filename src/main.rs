@@ -1,11 +1,13 @@
 use std::path::Path;
 
-use anyhow::{Context, Result, anyhow};
-use clap::{CommandFactory, Parser, error::ErrorKind};
+use anyhow::{anyhow, Result};
+use clap::{error::ErrorKind, CommandFactory, Parser};
 use regolith_config::{
-    FullConfig,
     cli_args::{self, CLIArguments, Session},
-    get_session_type, get_trawl_resources, search_config,
+    get_session_type,
+    resources::{ResourceProvider, TrawlResourceProvider, XrdbResourceProvider},
+    search::search_config,
+    FullConfig,
 };
 
 fn main() -> Result<()> {
@@ -42,12 +44,18 @@ fn main() -> Result<()> {
     ];
     let wm_config = FullConfig::new_from_session(session, &session_mappings)?;
 
-    let trawl_resources = get_trawl_resources().context("Failed to get Trawl resources")?;
-    let result = match args.sub_command() {
-        cli_args::OperationType::Search(search_args) => {
-            search_config(search_args, &wm_config, &trawl_resources)
-        }
+    let provider: &dyn ResourceProvider = match session {
+        Session::Wayland => &TrawlResourceProvider,
+        Session::X11 => &XrdbResourceProvider,
+    };
 
+    let result = match args.sub_command() {
+        cli_args::OperationType::Search(search_args) => search_config(
+            search_args.filter(),
+            search_args.pattern(),
+            &wm_config,
+            provider,
+        ),
         cli_args::OperationType::Eject(_eject_args) => todo!(),
         cli_args::OperationType::Reconcile { .. } => todo!(),
     }
