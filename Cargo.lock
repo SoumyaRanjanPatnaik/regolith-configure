@@ -601,6 +601,7 @@ dependencies = [
  "anyhow",
  "clap",
  "glob",
+ "strsim",
  "zbus",
 ]
 
