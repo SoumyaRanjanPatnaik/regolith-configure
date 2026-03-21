@@ -99,3 +99,233 @@ impl XresourceConfig {
         self.entries.iter().find(|entry| entry.key == key)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{create_temp_config_dir, create_xresources_file};
+
+    // --- XresourceConfig::new ---
+
+    #[test]
+    fn new_parses_simple_key_value_pairs() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "regolithwm.border.width: 2\nregolithwm.font.size: 12\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entries = config.get_all_entries();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "regolithwm.border.width");
+        assert_eq!(entries[0].value, "2");
+        assert_eq!(entries[1].key, "regolithwm.font.size");
+        assert_eq!(entries[1].value, "12");
+    }
+
+    #[test]
+    fn new_skips_comment_lines() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "! This is a comment\nregolithwm.border.width: 2\n! Another comment\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entries = config.get_all_entries();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].key, "regolithwm.border.width");
+    }
+
+    #[test]
+    fn new_skips_empty_lines() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "\nregolithwm.border.width: 2\n\nregolithwm.font.size: 12\n\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entries = config.get_all_entries();
+
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn new_follows_include_directives() {
+        let dir = create_temp_config_dir();
+        create_xresources_file(dir.path(), "extra.xr", "regolithwm.font.size: 14\n");
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "regolithwm.border.width: 2\n#include extra.xr\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entries = config.get_all_entries();
+
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].key, "regolithwm.border.width");
+        assert_eq!(entries[1].key, "regolithwm.font.size");
+    }
+
+    #[test]
+    fn new_follows_nested_includes() {
+        let dir = create_temp_config_dir();
+        create_xresources_file(dir.path(), "level2.xr", "regolithwm.gamma: 1.0\n");
+        create_xresources_file(
+            dir.path(),
+            "level1.xr",
+            "regolithwm.font.size: 12\n#include level2.xr\n",
+        );
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "regolithwm.border.width: 2\n#include level1.xr\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entries = config.get_all_entries();
+
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn new_returns_error_for_nonexistent_file() {
+        let result = XresourceConfig::new("/nonexistent/path/Xresources");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn new_handles_include_with_quoted_path() {
+        let dir = create_temp_config_dir();
+        create_xresources_file(dir.path(), "extra.xr", "regolithwm.gamma: 1.0\n");
+        let path = create_xresources_file(dir.path(), "Xresources", "#include \"extra.xr\"\n");
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert_eq!(config.get_all_entries().len(), 1);
+        assert_eq!(config.get_all_entries()[0].key, "regolithwm.gamma");
+    }
+
+    #[test]
+    fn new_skips_duplicate_includes() {
+        let dir = create_temp_config_dir();
+        create_xresources_file(dir.path(), "extra.xr", "regolithwm.gamma: 1.0\n");
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "#include extra.xr\n#include extra.xr\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert_eq!(config.get_all_entries().len(), 1);
+    }
+
+    #[test]
+    fn new_records_file_path_and_line_number() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "! comment\nregolithwm.border.width: 2\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entry = &config.get_all_entries()[0];
+
+        assert_eq!(entry.file_path, path);
+        assert_eq!(entry.line_number, 2);
+    }
+
+    // --- XresourceConfig::get_all_entries ---
+
+    #[test]
+    fn get_all_entries_returns_empty_for_empty_file() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(dir.path(), "Xresources", "");
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert!(config.get_all_entries().is_empty());
+    }
+
+    #[test]
+    fn get_all_entries_returns_entries_from_all_includes() {
+        let dir = create_temp_config_dir();
+        create_xresources_file(dir.path(), "a.xr", "key.a: val_a\n");
+        create_xresources_file(dir.path(), "b.xr", "key.b: val_b\n");
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "key.root: val_root\n#include a.xr\n#include b.xr\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entries = config.get_all_entries();
+
+        assert_eq!(entries.len(), 3);
+        let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+        assert!(keys.contains(&"key.root"));
+        assert!(keys.contains(&"key.a"));
+        assert!(keys.contains(&"key.b"));
+    }
+
+    #[test]
+    fn get_all_entries_correct_count() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(dir.path(), "Xresources", "k1: v1\nk2: v2\nk3: v3\n");
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert_eq!(config.get_all_entries().len(), 3);
+    }
+
+    // --- XresourceConfig::get_entry ---
+
+    #[test]
+    fn get_entry_finds_existing_key() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(
+            dir.path(),
+            "Xresources",
+            "regolithwm.border.width: 2\nregolithwm.font.size: 12\n",
+        );
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entry = config.get_entry("regolithwm.font.size").unwrap();
+
+        assert_eq!(entry.value, "12");
+    }
+
+    #[test]
+    fn get_entry_returns_none_for_missing_key() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert!(config.get_entry("nonexistent.key").is_none());
+    }
+
+    #[test]
+    fn get_entry_returns_none_for_empty_key() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert!(config.get_entry("").is_none());
+    }
+
+    #[test]
+    fn get_entry_is_case_sensitive() {
+        let dir = create_temp_config_dir();
+        let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
+
+        let config = XresourceConfig::new(&path).unwrap();
+        assert!(config.get_entry("Regolithwm.border.width").is_none());
+        assert!(config.get_entry("regolithwm.border.width").is_some());
+    }
+}

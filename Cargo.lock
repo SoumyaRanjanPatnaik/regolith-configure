@@ -602,6 +602,7 @@ dependencies = [
  "clap",
  "glob",
  "strsim",
+ "tempfile",
  "zbus",
 ]
 
