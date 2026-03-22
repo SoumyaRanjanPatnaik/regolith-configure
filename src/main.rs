@@ -1,12 +1,13 @@
 use std::path::Path;
 
-use anyhow::{anyhow, Result};
-use clap::{error::ErrorKind, CommandFactory, Parser};
-use regolith_config::{
+use anyhow::{Result, anyhow};
+use clap::{CommandFactory, Parser, error::ErrorKind};
+use regolith_configure::{
+    FullConfig,
     cli_args::{self, CLIArguments, Session},
     execute_search, get_session_type,
     resources::{ResourceProvider, TrawlResourceProvider, XrdbResourceProvider},
-    set_user_xresource, FullConfig,
+    set_user_xresource,
 };
 
 fn main() -> Result<()> {
