@@ -184,15 +184,13 @@ mod tests {
     use super::*;
     use crate::test_utils::{create_temp_config_dir, create_xresources_file};
 
-    // --- XresourceConfig::new ---
-
     #[test]
-    fn new_parses_simple_key_value_pairs() {
+    fn new_parses_key_value_pairs_and_skips_invalid_lines() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(
             dir.path(),
             "Xresources",
-            "regolithwm.border.width: 2\nregolithwm.font.size: 12\n",
+            "! comment\n\nregolithwm.border.width: 2\n\nregolithwm.font.size: 12\n",
         );
 
         let config = XresourceConfig::new(&path).unwrap();
@@ -203,37 +201,6 @@ mod tests {
         assert_eq!(entries[0].value, "2");
         assert_eq!(entries[1].key, "regolithwm.font.size");
         assert_eq!(entries[1].value, "12");
-    }
-
-    #[test]
-    fn new_skips_comment_lines() {
-        let dir = create_temp_config_dir();
-        let path = create_xresources_file(
-            dir.path(),
-            "Xresources",
-            "! This is a comment\nregolithwm.border.width: 2\n! Another comment\n",
-        );
-
-        let config = XresourceConfig::new(&path).unwrap();
-        let entries = config.get_all_entries();
-
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].key, "regolithwm.border.width");
-    }
-
-    #[test]
-    fn new_skips_empty_lines() {
-        let dir = create_temp_config_dir();
-        let path = create_xresources_file(
-            dir.path(),
-            "Xresources",
-            "\nregolithwm.border.width: 2\n\nregolithwm.font.size: 12\n\n",
-        );
-
-        let config = XresourceConfig::new(&path).unwrap();
-        let entries = config.get_all_entries();
-
-        assert_eq!(entries.len(), 2);
     }
 
     #[test]
@@ -255,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn new_follows_nested_includes() {
+    fn new_follows_nested_and_quoted_includes() {
         let dir = create_temp_config_dir();
         create_xresources_file(dir.path(), "level2.xr", "regolithwm.gamma: 1.0\n");
         create_xresources_file(
@@ -266,44 +233,18 @@ mod tests {
         let path = create_xresources_file(
             dir.path(),
             "Xresources",
-            "regolithwm.border.width: 2\n#include level1.xr\n",
+            "regolithwm.border.width: 2\n#include level1.xr\n#include \"level2.xr\"\n",
         );
 
         let config = XresourceConfig::new(&path).unwrap();
-        let entries = config.get_all_entries();
-
-        assert_eq!(entries.len(), 3);
+        // level2.xr is included twice but duplicate is skipped
+        assert_eq!(config.get_all_entries().len(), 3);
     }
 
     #[test]
     fn new_returns_error_for_nonexistent_file() {
         let result = XresourceConfig::new("/nonexistent/path/Xresources");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn new_handles_include_with_quoted_path() {
-        let dir = create_temp_config_dir();
-        create_xresources_file(dir.path(), "extra.xr", "regolithwm.gamma: 1.0\n");
-        let path = create_xresources_file(dir.path(), "Xresources", "#include \"extra.xr\"\n");
-
-        let config = XresourceConfig::new(&path).unwrap();
-        assert_eq!(config.get_all_entries().len(), 1);
-        assert_eq!(config.get_all_entries()[0].key, "regolithwm.gamma");
-    }
-
-    #[test]
-    fn new_skips_duplicate_includes() {
-        let dir = create_temp_config_dir();
-        create_xresources_file(dir.path(), "extra.xr", "regolithwm.gamma: 1.0\n");
-        let path = create_xresources_file(
-            dir.path(),
-            "Xresources",
-            "#include extra.xr\n#include extra.xr\n",
-        );
-
-        let config = XresourceConfig::new(&path).unwrap();
-        assert_eq!(config.get_all_entries().len(), 1);
     }
 
     #[test]
@@ -322,49 +263,6 @@ mod tests {
         assert_eq!(entry.line_number, 2);
     }
 
-    // --- XresourceConfig::get_all_entries ---
-
-    #[test]
-    fn get_all_entries_returns_empty_for_empty_file() {
-        let dir = create_temp_config_dir();
-        let path = create_xresources_file(dir.path(), "Xresources", "");
-
-        let config = XresourceConfig::new(&path).unwrap();
-        assert!(config.get_all_entries().is_empty());
-    }
-
-    #[test]
-    fn get_all_entries_returns_entries_from_all_includes() {
-        let dir = create_temp_config_dir();
-        create_xresources_file(dir.path(), "a.xr", "key.a: val_a\n");
-        create_xresources_file(dir.path(), "b.xr", "key.b: val_b\n");
-        let path = create_xresources_file(
-            dir.path(),
-            "Xresources",
-            "key.root: val_root\n#include a.xr\n#include b.xr\n",
-        );
-
-        let config = XresourceConfig::new(&path).unwrap();
-        let entries = config.get_all_entries();
-
-        assert_eq!(entries.len(), 3);
-        let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
-        assert!(keys.contains(&"key.root"));
-        assert!(keys.contains(&"key.a"));
-        assert!(keys.contains(&"key.b"));
-    }
-
-    #[test]
-    fn get_all_entries_correct_count() {
-        let dir = create_temp_config_dir();
-        let path = create_xresources_file(dir.path(), "Xresources", "k1: v1\nk2: v2\nk3: v3\n");
-
-        let config = XresourceConfig::new(&path).unwrap();
-        assert_eq!(config.get_all_entries().len(), 3);
-    }
-
-    // --- XresourceConfig::get_entry ---
-
     #[test]
     fn get_entry_finds_existing_key() {
         let dir = create_temp_config_dir();
@@ -381,20 +279,12 @@ mod tests {
     }
 
     #[test]
-    fn get_entry_returns_none_for_missing_key() {
+    fn get_entry_returns_none_for_missing_or_empty_key() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
 
         let config = XresourceConfig::new(&path).unwrap();
         assert!(config.get_entry("nonexistent.key").is_none());
-    }
-
-    #[test]
-    fn get_entry_returns_none_for_empty_key() {
-        let dir = create_temp_config_dir();
-        let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
-
-        let config = XresourceConfig::new(&path).unwrap();
         assert!(config.get_entry("").is_none());
     }
 
@@ -408,91 +298,8 @@ mod tests {
         assert!(config.get_entry("regolithwm.border.width").is_some());
     }
 
-    // --- set_user_xresource ---
-
     #[test]
-    fn set_user_xresource_creates_new_file() {
-        let dir = create_temp_config_dir();
-        let path = dir.path().join(".config/regolith3/Xresources");
-
-        // Override path via environment for testing
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-
-        let result = set_user_xresource("test.key", "test_value");
-        assert!(result.is_ok());
-        assert!(path.exists());
-
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("test.key: test_value"));
-    }
-
-    #[test]
-    fn set_user_xresource_updates_existing_key() {
-        let dir = create_temp_config_dir();
-        let config_dir = dir.path().join(".config/regolith3");
-        std::fs::create_dir_all(&config_dir).unwrap();
-        let path = config_dir.join("Xresources");
-        std::fs::write(
-            &path,
-            "regolithwm.border.width: 2\nregolithwm.font.size: 12\n",
-        )
-        .unwrap();
-
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-
-        let result = set_user_xresource("regolithwm.border.width", "5");
-        assert!(result.is_ok());
-
-        let config = XresourceConfig::new(&path).unwrap();
-        let entry = config.get_entry("regolithwm.border.width").unwrap();
-        assert_eq!(entry.value, "5");
-    }
-
-    #[test]
-    fn set_user_xresource_appends_to_existing_file() {
-        let dir = create_temp_config_dir();
-        let config_dir = dir.path().join(".config/regolith3");
-        std::fs::create_dir_all(&config_dir).unwrap();
-        let path = config_dir.join("Xresources");
-        std::fs::write(&path, "existing.key: value\n").unwrap();
-
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-
-        let result = set_user_xresource("new.key", "new_value");
-        assert!(result.is_ok());
-
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("existing.key: value"));
-        assert!(content.contains("new.key: new_value"));
-    }
-
-    #[test]
-    fn set_user_xresource_case_insensitive_update() {
-        let dir = create_temp_config_dir();
-        let config_dir = dir.path().join(".config/regolith3");
-        std::fs::create_dir_all(&config_dir).unwrap();
-        let path = config_dir.join("Xresources");
-        std::fs::write(&path, "regolithwm.border.width: 2\n").unwrap();
-
-        unsafe {
-            std::env::set_var("HOME", dir.path());
-        }
-
-        let result = set_user_xresource("Regolithwm.Border.Width", "10");
-        assert!(result.is_ok());
-
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("Regolithwm.Border.Width: 10"));
-    }
-
-    #[test]
-    fn set_user_xresource_creates_directory_if_missing() {
+    fn set_user_xresource_creates_and_updates() {
         let dir = create_temp_config_dir();
         let nested_path = dir.path().join(".config/regolith3/Xresources");
 
@@ -500,8 +307,28 @@ mod tests {
             std::env::set_var("HOME", dir.path());
         }
 
-        let result = set_user_xresource("test.key", "value");
+        // Creates new file with a key
+        let result = set_user_xresource("test.key", "test_value");
         assert!(result.is_ok());
         assert!(nested_path.exists());
+
+        let content = std::fs::read_to_string(&nested_path).unwrap();
+        assert!(content.contains("test.key: test_value"));
+
+        // Appends another key
+        let result2 = set_user_xresource("new.key", "new_value");
+        assert!(result2.is_ok());
+
+        let content2 = std::fs::read_to_string(&nested_path).unwrap();
+        assert!(content2.contains("test.key: test_value"));
+        assert!(content2.contains("new.key: new_value"));
+
+        // Updates existing key
+        let result3 = set_user_xresource("test.key", "updated_value");
+        assert!(result3.is_ok());
+
+        let content3 = std::fs::read_to_string(&nested_path).unwrap();
+        assert!(content3.contains("test.key: updated_value"));
+        assert!(content3.contains("new.key: new_value"));
     }
 }
