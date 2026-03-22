@@ -122,3 +122,14 @@ impl SetResourceArgs {
         &self.value
     }
 }
+
+pub fn get_session_type() -> Option<Session> {
+    std::env::vars().find_map(|(name, value)| match name.as_str() {
+        "XDG_SESSION_TYPE" => match value.as_str() {
+            "wayland" => Some(Session::Wayland),
+            "x11" => Some(Session::X11),
+            _ => None,
+        },
+        _ => None,
+    })
+}
