@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, collections::BTreeMap, collections::HashMap, fmt::Display};
 
-use crate::{ConfigPartial, FullConfig};
+use crate::{output, ConfigPartial, FullConfig};
 
 /// A single keybinding definition from a config file.
 #[derive(Debug)]
@@ -25,8 +25,8 @@ impl<'a> Display for BindingDef<'a> {
         write!(
             f,
             "{} - Line {}:\n\t{}",
-            self.src_config.file_name.to_string_lossy(),
-            self.line_no,
+            output::file_path(&self.src_config.file_name.to_string_lossy()),
+            output::line_number(self.line_no),
             self.line_contents
         )
     }

@@ -35,6 +35,7 @@
 pub mod cli_args;
 pub mod commands;
 pub mod config;
+pub mod output;
 pub mod resources;
 pub mod search;
 

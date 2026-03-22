@@ -9,7 +9,7 @@ use std::{
 
 use crate::{
     config::xresources::{get_user_xresources_path, XresourceConfig},
-    FullConfig,
+    output, FullConfig,
 };
 
 const MAX_SIMILAR_EDIT_SCORE: usize = 10;
@@ -301,64 +301,101 @@ pub fn search_resources(
 
 impl Display for ResourceSearchResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Resource Query: {}", self.resource_name)?;
+        writeln!(
+            f,
+            "{}: {}",
+            output::section_header("Resource Query"),
+            output::resource_name(&self.resource_name)
+        )?;
 
         if !self.matched_resources.is_empty() {
             writeln!(f)?;
-            writeln!(f, "Matched Resources:")?;
+            writeln!(f, "{}", output::section_header("Matched Resources:"))?;
             for matched in &self.matched_resources {
-                writeln!(f, "  - {}", matched)?;
+                writeln!(f, "  - {}", output::resource_name(matched))?;
             }
         }
 
         writeln!(f)?;
+        let runtime_display = match &self.runtime_value {
+            Some(v) => output::value_found(v),
+            None => output::value_not_found("Not found"),
+        };
         writeln!(
             f,
-            "Runtime Value: {}",
-            self.runtime_value.as_deref().unwrap_or("Not found")
+            "{}: {}",
+            output::section_header("Runtime Value"),
+            runtime_display
         )?;
 
         let default_val = match &self.default_value {
-            Some(v) if self.runtime_value.is_none() => format!("{} (In use)", v),
-            Some(v) => v.to_string(),
-            None => "Not found".to_string(),
+            Some(v) if self.runtime_value.is_none() => {
+                format!(
+                    "{} {}",
+                    output::default_value(v),
+                    output::in_use("(In use)")
+                )
+            }
+            Some(v) => output::default_value(v).to_string(),
+            None => output::value_not_found("Not found").to_string(),
         };
-        writeln!(f, "Default Value: {}", default_val)?;
+        writeln!(
+            f,
+            "{}: {}",
+            output::section_header("Default Value"),
+            default_val
+        )?;
 
         let override_val = self
             .overrides
             .first()
-            .map(|o| o.value.clone())
-            .unwrap_or_else(|| "Not found".to_string());
-        writeln!(f, "Custom Override: {}", override_val)?;
+            .map(|o| output::override_value(&o.value).to_string())
+            .unwrap_or_else(|| output::value_not_found("Not found").to_string());
+        writeln!(
+            f,
+            "{}: {}",
+            output::section_header("Custom Override"),
+            override_val
+        )?;
 
         writeln!(f)?;
-        writeln!(f, "Related Configuration Lines:")?;
+        writeln!(
+            f,
+            "{}",
+            output::section_header("Related Configuration Lines:")
+        )?;
         for usage in &self.usages {
             writeln!(
                 f,
                 "{} - Line {}",
-                usage.file_path.to_string_lossy(),
-                usage.line_number
+                output::file_path(&usage.file_path.to_string_lossy()),
+                output::line_number(usage.line_number)
             )?;
             writeln!(f, "    {}", usage.line_contents)?;
         }
 
         if self.has_exact_match {
             writeln!(f)?;
-            writeln!(f, "To override this resource, run the following command:")?;
             writeln!(
                 f,
-                "regolith-configure set-resource {} \"<custom_value>\"",
-                self.resource_name
+                "{}",
+                output::section_header("To override this resource, run the following command:")
+            )?;
+            writeln!(
+                f,
+                "{}",
+                output::command(&format!(
+                    "regolith-configure set-resource {} \"<custom_value>\"",
+                    self.resource_name
+                ))
             )?;
         }
 
         if !self.similar_resources.is_empty() {
             writeln!(f)?;
-            writeln!(f, "Similar Resources:")?;
+            writeln!(f, "{}", output::section_header("Similar Resources:"))?;
             for resource in &self.similar_resources {
-                writeln!(f, "  - {}", resource)?;
+                writeln!(f, "  - {}", output::similar_item(resource))?;
             }
         }
 

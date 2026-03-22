@@ -2,7 +2,7 @@
 
 use std::{fmt::Display, path::PathBuf};
 
-use crate::FullConfig;
+use crate::{output, FullConfig};
 
 /// A single line matching a keyword search.
 #[derive(Debug)]
@@ -19,9 +19,9 @@ impl Display for KeywordDef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} - Line {}:\n\t{}",
-            self.file_path.to_string_lossy(),
-            self.line_number,
+            "{} - Line {}\n\t{}",
+            output::file_path(&self.file_path.to_string_lossy()),
+            output::line_number(self.line_number),
             self.line_contents
         )
     }
