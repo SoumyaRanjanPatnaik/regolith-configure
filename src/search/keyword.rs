@@ -56,7 +56,7 @@ impl Display for KeywordSearchResult {
 /// # Returns
 ///
 /// A `KeywordSearchResult` containing all matching lines.
-pub fn search_keyword_result(keyword: &str, config: &FullConfig) -> KeywordSearchResult {
+pub fn search_keywords(keyword: &str, config: &FullConfig) -> KeywordSearchResult {
     let keyword_lower = keyword.to_lowercase();
     let results: Vec<_> = config
         .partials

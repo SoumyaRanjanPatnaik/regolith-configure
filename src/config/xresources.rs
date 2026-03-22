@@ -36,7 +36,7 @@ pub struct XresourceConfig {
 }
 
 impl XresourceConfig {
-    /// Parses an Xresources file and all its includes.
+    /// Loads an Xresources file and all its includes.
     ///
     /// # Arguments
     ///
@@ -52,7 +52,7 @@ impl XresourceConfig {
     ///
     /// Returns an error if the root file cannot be opened or read,
     /// or if any included file cannot be resolved.
-    pub fn new<P: AsRef<Path>>(root_path: P) -> Result<Self> {
+    pub fn load<P: AsRef<Path>>(root_path: P) -> Result<Self> {
         let root_path = root_path.as_ref();
         let mut entries = Vec::new();
         let mut seen_paths = BTreeSet::new();
@@ -126,7 +126,7 @@ impl XresourceConfig {
     }
 
     /// Returns all parsed resource entries.
-    pub fn get_all_entries(&self) -> &[XresourceEntry] {
+    pub fn entries(&self) -> &[XresourceEntry] {
         &self.entries
     }
 
@@ -134,7 +134,7 @@ impl XresourceConfig {
     ///
     /// Returns the first entry with a matching key, or `None` if not found.
     /// Key matching is case-sensitive.
-    pub fn get_entry(&self, key: &str) -> Option<&XresourceEntry> {
+    pub fn find_entry(&self, key: &str) -> Option<&XresourceEntry> {
         self.entries.iter().find(|entry| entry.key == key)
     }
 }
@@ -162,7 +162,7 @@ mod tests {
     use crate::test_utils::{create_temp_config_dir, create_xresources_file};
 
     #[test]
-    fn new_parses_key_value_pairs_and_skips_invalid_lines() {
+    fn load_parses_key_value_pairs_and_skips_invalid_lines() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(
             dir.path(),
@@ -170,8 +170,8 @@ mod tests {
             "! comment\n\nregolithwm.border.width: 2\n\nregolithwm.font.size: 12\n",
         );
 
-        let config = XresourceConfig::new(&path).unwrap();
-        let entries = config.get_all_entries();
+        let config = XresourceConfig::load(&path).unwrap();
+        let entries = config.entries();
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].key, "regolithwm.border.width");
@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn new_follows_include_directives() {
+    fn load_follows_include_directives() {
         let dir = create_temp_config_dir();
         create_xresources_file(dir.path(), "extra.xr", "regolithwm.font.size: 14\n");
         let path = create_xresources_file(
@@ -190,8 +190,8 @@ mod tests {
             "regolithwm.border.width: 2\n#include extra.xr\n",
         );
 
-        let config = XresourceConfig::new(&path).unwrap();
-        let entries = config.get_all_entries();
+        let config = XresourceConfig::load(&path).unwrap();
+        let entries = config.entries();
 
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].key, "regolithwm.border.width");
@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn new_follows_nested_and_quoted_includes() {
+    fn load_follows_nested_and_quoted_includes() {
         let dir = create_temp_config_dir();
         create_xresources_file(dir.path(), "level2.xr", "regolithwm.gamma: 1.0\n");
         create_xresources_file(
@@ -213,19 +213,19 @@ mod tests {
             "regolithwm.border.width: 2\n#include level1.xr\n#include \"level2.xr\"\n",
         );
 
-        let config = XresourceConfig::new(&path).unwrap();
+        let config = XresourceConfig::load(&path).unwrap();
         // level2.xr is included twice but duplicate is skipped
-        assert_eq!(config.get_all_entries().len(), 3);
+        assert_eq!(config.entries().len(), 3);
     }
 
     #[test]
-    fn new_returns_error_for_nonexistent_file() {
-        let result = XresourceConfig::new("/nonexistent/path/Xresources");
+    fn load_returns_error_for_nonexistent_file() {
+        let result = XresourceConfig::load("/nonexistent/path/Xresources");
         assert!(result.is_err());
     }
 
     #[test]
-    fn new_records_file_path_and_line_number() {
+    fn load_records_file_path_and_line_number() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(
             dir.path(),
@@ -233,15 +233,15 @@ mod tests {
             "! comment\nregolithwm.border.width: 2\n",
         );
 
-        let config = XresourceConfig::new(&path).unwrap();
-        let entry = &config.get_all_entries()[0];
+        let config = XresourceConfig::load(&path).unwrap();
+        let entry = &config.entries()[0];
 
         assert_eq!(entry.file_path, path);
         assert_eq!(entry.line_number, 2);
     }
 
     #[test]
-    fn get_entry_finds_existing_key() {
+    fn find_entry_finds_existing_key() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(
             dir.path(),
@@ -249,29 +249,29 @@ mod tests {
             "regolithwm.border.width: 2\nregolithwm.font.size: 12\n",
         );
 
-        let config = XresourceConfig::new(&path).unwrap();
-        let entry = config.get_entry("regolithwm.font.size").unwrap();
+        let config = XresourceConfig::load(&path).unwrap();
+        let entry = config.find_entry("regolithwm.font.size").unwrap();
 
         assert_eq!(entry.value, "12");
     }
 
     #[test]
-    fn get_entry_returns_none_for_missing_or_empty_key() {
+    fn find_entry_returns_none_for_missing_or_empty_key() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
 
-        let config = XresourceConfig::new(&path).unwrap();
-        assert!(config.get_entry("nonexistent.key").is_none());
-        assert!(config.get_entry("").is_none());
+        let config = XresourceConfig::load(&path).unwrap();
+        assert!(config.find_entry("nonexistent.key").is_none());
+        assert!(config.find_entry("").is_none());
     }
 
     #[test]
-    fn get_entry_is_case_sensitive() {
+    fn find_entry_is_case_sensitive() {
         let dir = create_temp_config_dir();
         let path = create_xresources_file(dir.path(), "Xresources", "regolithwm.border.width: 2\n");
 
-        let config = XresourceConfig::new(&path).unwrap();
-        assert!(config.get_entry("Regolithwm.border.width").is_none());
-        assert!(config.get_entry("regolithwm.border.width").is_some());
+        let config = XresourceConfig::load(&path).unwrap();
+        assert!(config.find_entry("Regolithwm.border.width").is_none());
+        assert!(config.find_entry("regolithwm.border.width").is_some());
     }
 }

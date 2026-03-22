@@ -54,7 +54,7 @@ impl<'a> From<Vec<BindingDef<'a>>> for BindingsSearchResult<'a> {
     }
 }
 
-/// Resolves variable references in a binding string.
+/// Expands variable references in a binding string.
 ///
 /// Variable references are `$var` patterns. Each reference is replaced
 /// with its value from the variables map. Unresolved variables remain
@@ -62,16 +62,13 @@ impl<'a> From<Vec<BindingDef<'a>>> for BindingsSearchResult<'a> {
 ///
 /// # Arguments
 ///
-/// * `binding` - The binding string to normalize
+/// * `binding` - The binding string to expand
 /// * `variables` - Map of variable names to their resolved values
 ///
 /// # Returns
 ///
 /// The binding with all resolvable variable references replaced.
-pub fn normalize_binding<'a>(
-    binding: &'a str,
-    variables: &BTreeMap<String, String>,
-) -> Cow<'a, str> {
+pub fn expand_binding<'a>(binding: &'a str, variables: &BTreeMap<String, String>) -> Cow<'a, str> {
     let mut normalized_binding = Cow::Borrowed(binding.trim());
 
     while normalized_binding.contains('$') {
@@ -117,14 +114,14 @@ pub fn normalize_binding<'a>(
 /// # Returns
 ///
 /// A `BindingsSearchResult` containing all matching bindings.
-pub fn search_binding_result<'a>(
+pub fn search_bindings<'a>(
     binding: &str,
     config: &'a FullConfig,
     trawl_resources: &HashMap<String, String>,
 ) -> BindingsSearchResult<'a> {
-    let variables = config.get_all_variables(trawl_resources);
+    let variables = config.resolve_variables(trawl_resources);
     let matching_bindings: Vec<_> = config
-        .get_all_bindings(&variables)
+        .resolve_bindings(&variables)
         .0
         .into_iter()
         .filter_map(|binding_def| {

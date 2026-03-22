@@ -46,7 +46,7 @@ impl ConfigPartial {
     /// # Errors
     ///
     /// Returns an error if a glob pattern is invalid.
-    pub fn get_imported_paths(&self) -> Result<Vec<PathBuf>> {
+    pub fn resolve_imports(&self) -> Result<Vec<PathBuf>> {
         let mut imports = Vec::new();
         for line in self.config.lines() {
             if !line.trim().starts_with("include") {
@@ -99,7 +99,7 @@ impl ConfigPartial {
     /// # Returns
     ///
     /// An iterator of (variable_name, resolved_value) pairs.
-    pub fn config_variables(
+    pub fn extract_variables(
         &self,
         trawl_resources: &HashMap<String, String>,
     ) -> impl Iterator<Item = (String, String)> {
@@ -138,7 +138,7 @@ impl ConfigPartial {
     ///
     /// An iterator of `BindingDef` instances with both original and
     /// normalized binding strings.
-    pub fn config_bindings<'a>(
+    pub fn extract_bindings<'a>(
         &'a self,
         variables: &BTreeMap<String, String>,
     ) -> impl Iterator<Item = search::bindings::BindingDef<'a>> {
@@ -152,7 +152,7 @@ impl ConfigPartial {
             if command != "bindsym" && command != "bindcode" {
                 return None;
             }
-            let resolved_binding = search::bindings::normalize_binding(binding, variables);
+            let resolved_binding = search::bindings::expand_binding(binding, variables);
 
             Some(search::bindings::BindingDef {
                 orig_binding: binding,

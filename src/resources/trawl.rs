@@ -13,7 +13,7 @@ use super::ResourceProvider;
 pub struct TrawlResourceProvider;
 
 impl ResourceProvider for TrawlResourceProvider {
-    /// Retrieves all X resources from the Trawl D-Bus service.
+    /// Queries all X resources from the Trawl D-Bus service.
     ///
     /// # Errors
     ///
@@ -21,7 +21,7 @@ impl ResourceProvider for TrawlResourceProvider {
     /// - The D-Bus session bus cannot be connected
     /// - The Trawl service is not available
     /// - The `Resources` property cannot be read
-    fn get_all_resources(&self) -> Result<HashMap<String, String>> {
+    fn query_resources(&self) -> Result<HashMap<String, String>> {
         let connection = Connection::session().context("Failed to connect to D-Bus session bus")?;
         let props = PropertiesProxy::builder(&connection)
             .destination("org.regolith.Trawl")?

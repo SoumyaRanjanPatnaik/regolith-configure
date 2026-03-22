@@ -12,12 +12,12 @@ use super::ResourceProvider;
 pub struct XrdbResourceProvider;
 
 impl ResourceProvider for XrdbResourceProvider {
-    /// Retrieves all X resources from the X resource database.
+    /// Queries all X resources from the X resource database.
     ///
     /// # Errors
     ///
     /// Returns an error if the `xrdb` command cannot be executed.
-    fn get_all_resources(&self) -> Result<HashMap<String, String>> {
+    fn query_resources(&self) -> Result<HashMap<String, String>> {
         let output = Command::new("xrdb")
             .arg("-query")
             .output()

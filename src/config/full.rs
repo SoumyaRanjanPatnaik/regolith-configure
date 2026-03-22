@@ -49,7 +49,7 @@ impl FullConfig {
     /// # Errors
     ///
     /// Returns an error if the root config file cannot be opened or read.
-    pub fn new_from_session<'a>(
+    pub fn load_for_session<'a>(
         session: Session,
         session_mappings: &'a SessionMappings,
     ) -> Result<Self> {
@@ -73,12 +73,12 @@ impl FullConfig {
 
         Ok(Self {
             _config_root: root_config_path.to_path_buf(),
-            partials: Self::discover_config_partials(root_config)?,
+            partials: Self::resolve_includes(root_config)?,
         })
     }
 
-    fn discover_config_partials(root_config: ConfigPartial) -> Result<Vec<ConfigPartial>> {
-        let mut dicovered_config_partials = Vec::new();
+    fn resolve_includes(root_config: ConfigPartial) -> Result<Vec<ConfigPartial>> {
+        let mut discovered_config_partials = Vec::new();
 
         let mut bfs_queue = LinkedList::from([root_config]);
         let mut seen_paths = BTreeSet::new();
@@ -87,7 +87,7 @@ impl FullConfig {
                 break;
             };
 
-            for import_path in current_partial.get_imported_paths()? {
+            for import_path in current_partial.resolve_imports()? {
                 if seen_paths.contains(&import_path) {
                     continue;
                 }
@@ -102,13 +102,13 @@ impl FullConfig {
                 bfs_queue.push_back(import_partial);
             }
 
-            dicovered_config_partials.push(current_partial);
+            discovered_config_partials.push(current_partial);
         }
 
-        Ok(dicovered_config_partials)
+        Ok(discovered_config_partials)
     }
 
-    /// Collects all variables defined across all config partials.
+    /// Resolves all variables defined across all config partials.
     ///
     /// Variables are defined via `set` or `set_from_resource` directives.
     /// For `set_from_resource`, the value is resolved from the provided
@@ -121,17 +121,17 @@ impl FullConfig {
     /// # Returns
     ///
     /// A `BTreeMap` of variable names to their resolved values.
-    pub fn get_all_variables(
+    pub fn resolve_variables(
         &self,
         trawl_resources: &HashMap<String, String>,
     ) -> BTreeMap<String, String> {
         self.partials
             .iter()
-            .flat_map(|partial| partial.config_variables(trawl_resources))
+            .flat_map(|partial| partial.extract_variables(trawl_resources))
             .collect()
     }
 
-    /// Collects all keybindings defined across all config partials.
+    /// Resolves all keybindings defined across all config partials.
     ///
     /// Bindings are defined via `bindsym` or `bindcode` directives.
     /// Variable references in bindings are resolved using the provided
@@ -144,14 +144,14 @@ impl FullConfig {
     /// # Returns
     ///
     /// A `BindingsSearchResult` containing all discovered bindings.
-    pub fn get_all_bindings(
+    pub fn resolve_bindings(
         &'_ self,
         variables: &BTreeMap<String, String>,
     ) -> search::bindings::BindingsSearchResult<'_> {
         let bindings: Vec<_> = self
             .partials
             .iter()
-            .flat_map(|partial| partial.config_bindings(variables))
+            .flat_map(|partial| partial.extract_bindings(variables))
             .collect();
 
         search::bindings::BindingsSearchResult::from(bindings)

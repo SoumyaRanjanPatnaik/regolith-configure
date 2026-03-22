@@ -35,7 +35,7 @@ impl Default for MockResourceProvider {
 }
 
 impl ResourceProvider for MockResourceProvider {
-    fn get_all_resources(&self) -> Result<HashMap<String, String>> {
+    fn query_resources(&self) -> Result<HashMap<String, String>> {
         Ok(self.resources.clone())
     }
 }
@@ -161,13 +161,13 @@ impl TestFixture {
         file.write_all(root_content.as_bytes())
             .expect("Failed to write root config");
 
-        // Use new_from_session with a custom session mapping pointing to our temp config
+        // Use load_for_session with a custom session mapping pointing to our temp config
         // Note: We need to leak the path to get 'static lifetime for SessionMappings
         let leaked_path: &'static Path = Box::leak(self.root_config_path.clone().into_boxed_path());
         let session_mappings: &SessionMappings =
             &[(Session::Wayland, leaked_path), (Session::X11, leaked_path)];
 
-        FullConfig::new_from_session(Session::Wayland, session_mappings)
+        FullConfig::load_for_session(Session::Wayland, session_mappings)
             .expect("Failed to create FullConfig")
     }
 }

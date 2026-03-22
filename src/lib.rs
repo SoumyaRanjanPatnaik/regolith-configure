@@ -14,18 +14,18 @@
 //! # Example
 //!
 //! ```no_run
-//! use regolith_config::{FullConfig, search_config, set_user_xresource};
+//! use regolith_config::{FullConfig, execute_search, set_user_xresource};
 //! use regolith_config::resources::XrdbResourceProvider;
 //! use regolith_config::cli_args::{Session, FilterType};
 //! use std::path::Path;
 //!
 //! // Load configuration for a session
 //! let mappings = [(Session::X11, Path::new("/etc/regolith/i3/config"))];
-//! let config = FullConfig::new_from_session(Session::X11, &mappings)?;
+//! let config = FullConfig::load_for_session(Session::X11, &mappings)?;
 //!
 //! // Search for keybindings
 //! let provider = XrdbResourceProvider;
-//! let result = search_config(FilterType::Bindings, "Super+Enter", &config, &provider);
+//! let result = execute_search(FilterType::Bindings, "Super+Enter", &config, &provider);
 //!
 //! // Set a user X resource
 //! let path = set_user_xresource("regolithwm.border.width", "2")?;
@@ -39,7 +39,7 @@ pub mod resources;
 pub mod search;
 
 pub use cli_args::get_session_type;
-pub use commands::{search_config, set_user_xresource, SearchResult};
+pub use commands::{execute_search, set_user_xresource, SearchResult};
 pub use config::{ConfigPartial, FullConfig, SessionMappings};
 
 #[cfg(test)]

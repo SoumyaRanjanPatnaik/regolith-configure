@@ -4,9 +4,9 @@ use anyhow::{anyhow, Result};
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use regolith_config::{
     cli_args::{self, CLIArguments, Session},
-    get_session_type,
+    execute_search, get_session_type,
     resources::{ResourceProvider, TrawlResourceProvider, XrdbResourceProvider},
-    search_config, set_user_xresource, FullConfig,
+    set_user_xresource, FullConfig,
 };
 
 fn main() -> Result<()> {
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
         (Session::X11, Path::new("/etc/regolith/i3/config")),
         (Session::Wayland, Path::new("/etc/regolith/sway/config")),
     ];
-    let wm_config = FullConfig::new_from_session(session, &session_mappings)?;
+    let wm_config = FullConfig::load_for_session(session, &session_mappings)?;
 
     let provider: &dyn ResourceProvider = match session {
         Session::Wayland => &TrawlResourceProvider,
@@ -49,7 +49,7 @@ fn main() -> Result<()> {
     };
 
     let result = match args.sub_command() {
-        cli_args::OperationType::Search(search_args) => search_config(
+        cli_args::OperationType::Search(search_args) => execute_search(
             search_args.filter(),
             search_args.pattern(),
             &wm_config,

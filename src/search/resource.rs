@@ -96,8 +96,8 @@ fn resource_candidates(config: &FullConfig, xresources_path: &Path) -> BTreeSet<
         }
     }
 
-    if let Ok(xconfig) = XresourceConfig::new(xresources_path) {
-        for entry in xconfig.get_all_entries() {
+    if let Ok(xconfig) = XresourceConfig::load(xresources_path) {
+        for entry in xconfig.entries() {
             candidates.insert(entry.key.clone());
         }
     }
@@ -153,13 +153,13 @@ fn collect_similar_resources(query: &str, candidates: &BTreeSet<String>) -> Vec<
 /// # Returns
 ///
 /// A `ResourceSearchResult` with all available information about the resource.
-pub fn search_resource_result(
+pub fn search_resources(
     resource: &str,
     config: &FullConfig,
     provider: &dyn crate::resources::ResourceProvider,
 ) -> ResourceSearchResult {
     let query_lower = resource.to_lowercase();
-    let all_runtime_resources = provider.get_all_resources().unwrap_or_default();
+    let all_runtime_resources = provider.query_resources().unwrap_or_default();
     let xresources_path = get_user_xresources_path();
 
     let mut candidates = resource_candidates(config, &xresources_path);
@@ -261,11 +261,11 @@ pub fn search_resource_result(
         })
         .collect();
 
-    let overrides: Vec<_> = XresourceConfig::new(&xresources_path)
+    let overrides: Vec<_> = XresourceConfig::load(&xresources_path)
         .ok()
         .map(|xconfig| {
             xconfig
-                .get_all_entries()
+                .entries()
                 .iter()
                 .filter(|entry| {
                     if has_exact_match {

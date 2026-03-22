@@ -20,39 +20,39 @@ fn test_config_partial_new_is_functional_for_imports() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "included.conf", "some content");
     let partial = create_config_partial_in_dir(dir.path(), "main.conf", "include included.conf");
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("included.conf"));
 }
 
 // ========================================================================
-// ConfigPartial::get_imported_paths
+// ConfigPartial::resolve_imports
 // ========================================================================
 
 #[test]
-fn test_get_imported_paths_single_relative_include() {
+fn test_resolve_imports_single_relative_include() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "bindings.conf", "bindsym $mod+X kill");
     let partial = create_config_partial_in_dir(dir.path(), "config.conf", "include bindings.conf");
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("bindings.conf"));
     assert!(paths[0].is_file());
 }
 
 #[test]
-fn test_get_imported_paths_single_absolute_include() {
+fn test_resolve_imports_single_absolute_include() {
     let dir = create_temp_config_dir();
     let abs_path = create_config_file(dir.path(), "absolute.conf", "bindsym $mod+X kill");
     let content = format!("include {}", abs_path.display());
     let partial = create_config_partial_in_dir(dir.path(), "config.conf", &content);
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 1);
     assert_eq!(paths[0], abs_path);
 }
 
 #[test]
-fn test_get_imported_paths_multiple_includes() {
+fn test_resolve_imports_multiple_includes() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "bindings.conf", "bindsym $mod+X kill");
     create_config_file(dir.path(), "vars.conf", "set $mod Super");
@@ -61,7 +61,7 @@ fn test_get_imported_paths_multiple_includes() {
         "config.conf",
         "include bindings.conf\ninclude vars.conf",
     );
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 2);
     let path_names: Vec<_> = paths
         .iter()
@@ -72,13 +72,13 @@ fn test_get_imported_paths_multiple_includes() {
 }
 
 #[test]
-fn test_get_imported_paths_glob_pattern() {
+fn test_resolve_imports_glob_pattern() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "bind1.conf", "bindsym $mod+A exec a");
     create_config_file(dir.path(), "bind2.conf", "bindsym $mod+B exec b");
     create_config_file(dir.path(), "other.txt", "not a config");
     let partial = create_config_partial_in_dir(dir.path(), "config.conf", "include bind*.conf");
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 2);
     let path_names: Vec<_> = paths
         .iter()
@@ -89,40 +89,40 @@ fn test_get_imported_paths_glob_pattern() {
 }
 
 #[test]
-fn test_get_imported_paths_quoted_include_path() {
+fn test_resolve_imports_quoted_include_path() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "quoted.conf", "content");
     let partial =
         create_config_partial_in_dir(dir.path(), "config.conf", "include \"quoted.conf\"");
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("quoted.conf"));
 }
 
 #[test]
-fn test_get_imported_paths_mixed_include_types() {
+fn test_resolve_imports_mixed_include_types() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "relative.conf", "content1");
     let abs_path = create_config_file(dir.path(), "absolute.conf", "content2");
     let content = format!("include relative.conf\ninclude {}", abs_path.display());
     let partial = create_config_partial_in_dir(dir.path(), "config.conf", &content);
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 2);
     assert!(paths.iter().any(|p| p.ends_with("relative.conf")));
     assert!(paths.iter().any(|p| p == &abs_path));
 }
 
 #[test]
-fn test_get_imported_paths_nonexistent_file_returns_empty() {
+fn test_resolve_imports_nonexistent_file_returns_empty() {
     let dir = create_temp_config_dir();
     let partial =
         create_config_partial_in_dir(dir.path(), "config.conf", "include nonexistent.conf");
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert!(paths.is_empty());
 }
 
 #[test]
-fn test_get_imported_paths_skips_non_include_lines() {
+fn test_resolve_imports_skips_non_include_lines() {
     let dir = create_temp_config_dir();
     create_config_file(dir.path(), "bindings.conf", "content");
     let partial = create_config_partial_in_dir(
@@ -130,36 +130,36 @@ fn test_get_imported_paths_skips_non_include_lines() {
         "config.conf",
         "# include comment.conf\nset $mod Super\ninclude bindings.conf\nbindsym $mod+X kill",
     );
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("bindings.conf"));
 }
 
 #[test]
-fn test_get_imported_paths_nested_directory_include() {
+fn test_resolve_imports_nested_directory_include() {
     let dir = create_temp_config_dir();
     let sub_dir = dir.path().join("subdir");
     std::fs::create_dir_all(&sub_dir).unwrap();
     create_config_file(&sub_dir, "nested.conf", "content");
     let partial =
         create_config_partial_in_dir(dir.path(), "config.conf", "include subdir/nested.conf");
-    let paths = partial.get_imported_paths().unwrap();
+    let paths = partial.resolve_imports().unwrap();
     assert_eq!(paths.len(), 1);
     assert!(paths[0].ends_with("nested.conf"));
 }
 
 // ========================================================================
-// ConfigPartial::config_variables
+// ConfigPartial::extract_variables
 // ========================================================================
 
 #[test]
-fn test_config_variables_set_commands() {
+fn test_extract_variables_set_commands() {
     let partial = create_config_partial(
         "/tmp/config.conf",
         "set $mod Super\nset $alt Alt\nset $term alacritty",
     );
     let resources = create_mock_resources();
-    let vars: Vec<_> = partial.config_variables(&resources).collect();
+    let vars: Vec<_> = partial.extract_variables(&resources).collect();
     assert_eq!(vars.len(), 3);
     assert!(vars.contains(&("mod".to_string(), "Super".to_string())));
     assert!(vars.contains(&("alt".to_string(), "Alt".to_string())));
@@ -167,7 +167,7 @@ fn test_config_variables_set_commands() {
 }
 
 #[test]
-fn test_config_variables_set_from_resource() {
+fn test_extract_variables_set_from_resource() {
     let cases = [
         ("set_from_resource $mod mod mod_default", "Super"),
         ("set_from_resource $border wm.border.width 3", "3"),
@@ -179,20 +179,20 @@ fn test_config_variables_set_from_resource() {
         } else {
             HashMap::new()
         };
-        let vars: Vec<_> = partial.config_variables(&resources).collect();
+        let vars: Vec<_> = partial.extract_variables(&resources).collect();
         assert_eq!(vars.len(), 1, "Failed for: {}", config_line);
         assert_eq!(vars[0].1, expected_value, "Failed for: {}", config_line);
     }
 }
 
 #[test]
-fn test_config_variables_mixed_set_and_set_from_resource() {
+fn test_extract_variables_mixed_set_and_set_from_resource() {
     let partial = create_config_partial(
         "/tmp/config.conf",
         "set $term alacritty\nset_from_resource $mod mod mod_default\nset $launcher dmenu_run",
     );
     let resources = create_mock_resources();
-    let vars: Vec<_> = partial.config_variables(&resources).collect();
+    let vars: Vec<_> = partial.extract_variables(&resources).collect();
     assert_eq!(vars.len(), 3);
     assert!(vars.contains(&("term".to_string(), "alacritty".to_string())));
     assert!(vars.contains(&("mod".to_string(), "Super".to_string())));
@@ -200,26 +200,26 @@ fn test_config_variables_mixed_set_and_set_from_resource() {
 }
 
 #[test]
-fn test_config_variables_skips_irrelevant_lines() {
+fn test_extract_variables_skips_irrelevant_lines() {
     let partial = create_config_partial(
         "/tmp/config.conf",
         "# comment\nset $mod Super\nbindsym $mod+X kill\nset $alt Alt\n# another comment",
     );
     let resources = HashMap::new();
-    let vars: Vec<_> = partial.config_variables(&resources).collect();
+    let vars: Vec<_> = partial.extract_variables(&resources).collect();
     assert_eq!(vars.len(), 2);
     assert!(vars.contains(&("mod".to_string(), "Super".to_string())));
     assert!(vars.contains(&("alt".to_string(), "Alt".to_string())));
 }
 
 #[test]
-fn test_config_variables_whitespace_and_dollar_prefix() {
+fn test_extract_variables_whitespace_and_dollar_prefix() {
     let partial = create_config_partial(
         "/tmp/config.conf",
         "  set   $mod   Super\nset mod Super\nset_from_resource\t$alt\twm.alt\tAlt_default",
     );
     let resources = HashMap::new();
-    let vars: Vec<_> = partial.config_variables(&resources).collect();
+    let vars: Vec<_> = partial.extract_variables(&resources).collect();
     assert_eq!(vars.len(), 3);
     assert_eq!(vars[0].0, "mod");
     assert_eq!(vars[1].0, "mod");
@@ -227,20 +227,20 @@ fn test_config_variables_whitespace_and_dollar_prefix() {
 }
 
 #[test]
-fn test_config_variables_last_value_wins_for_duplicates() {
+fn test_extract_variables_last_value_wins_for_duplicates() {
     let partial = create_config_partial("/tmp/config.conf", "set $mod Super\nset $mod Hyper");
     let resources = HashMap::new();
-    let vars: Vec<_> = partial.config_variables(&resources).collect();
+    let vars: Vec<_> = partial.extract_variables(&resources).collect();
     assert_eq!(vars.len(), 2);
     assert_eq!(vars[1], ("mod".to_string(), "Hyper".to_string()));
 }
 
 // ========================================================================
-// ConfigPartial::config_bindings
+// ConfigPartial::extract_bindings
 // ========================================================================
 
 #[test]
-fn test_config_bindings_bindsym_and_bindcode() {
+fn test_extract_bindings_bindsym_and_bindcode() {
     let cases = [
         ("bindsym Mod4+Return exec terminal", "Mod4+Return", 1),
         ("bindcode 36+Return exec terminal", "36+Return", 1),
@@ -248,7 +248,7 @@ fn test_config_bindings_bindsym_and_bindcode() {
     for (config_line, expected_orig, expected_line_no) in cases {
         let partial = create_config_partial("/tmp/config.conf", config_line);
         let variables = create_mock_variables();
-        let bindings: Vec<_> = partial.config_bindings(&variables).collect();
+        let bindings: Vec<_> = partial.extract_bindings(&variables).collect();
         assert_eq!(bindings.len(), 1, "Failed for: {}", config_line);
         assert_eq!(bindings[0].orig_binding, expected_orig);
         assert_eq!(bindings[0].line_no, expected_line_no);
@@ -256,7 +256,7 @@ fn test_config_bindings_bindsym_and_bindcode() {
 }
 
 #[test]
-fn test_config_bindings_variable_resolution() {
+fn test_extract_bindings_variable_resolution() {
     let cases = [
         ("$mod+Return", "Super+Return"),
         ("Shift+Return", "Shift+Return"),
@@ -267,7 +267,7 @@ fn test_config_bindings_variable_resolution() {
         let content = format!("bindsym {} exec terminal", binding);
         let partial = create_config_partial("/tmp/config.conf", &content);
         let variables = create_mock_variables();
-        let bindings: Vec<_> = partial.config_bindings(&variables).collect();
+        let bindings: Vec<_> = partial.extract_bindings(&variables).collect();
         assert_eq!(bindings.len(), 1, "Failed for: {}", binding);
         assert_eq!(bindings[0].orig_binding, binding);
         assert_eq!(bindings[0].normalized_binding.as_ref(), expected_normalized);
@@ -275,26 +275,26 @@ fn test_config_bindings_variable_resolution() {
 }
 
 #[test]
-fn test_config_bindings_with_options() {
+fn test_extract_bindings_with_options() {
     let partial = create_config_partial(
         "/tmp/config.conf",
         "bindsym --release --whole-window $mod+Button1 floating resize",
     );
     let variables = create_mock_variables();
-    let bindings: Vec<_> = partial.config_bindings(&variables).collect();
+    let bindings: Vec<_> = partial.extract_bindings(&variables).collect();
     assert_eq!(bindings.len(), 1);
     assert_eq!(bindings[0].orig_binding, "$mod+Button1");
     assert_eq!(bindings[0].normalized_binding.as_ref(), "Super+Button1");
 }
 
 #[test]
-fn test_config_bindings_multiple_bindings_and_line_numbers() {
+fn test_extract_bindings_multiple_bindings_and_line_numbers() {
     let partial = create_config_partial(
         "/tmp/config.conf",
         "set $mod Super\nbindsym $mod+Return exec terminal\nbindsym $mod+Q kill\nbindsym $mod+D exec dmenu_run",
     );
     let variables = create_mock_variables();
-    let bindings: Vec<_> = partial.config_bindings(&variables).collect();
+    let bindings: Vec<_> = partial.extract_bindings(&variables).collect();
     assert_eq!(bindings.len(), 3);
     assert_eq!(bindings[0].orig_binding, "$mod+Return");
     assert_eq!(bindings[0].line_no, 2);
@@ -305,10 +305,10 @@ fn test_config_bindings_multiple_bindings_and_line_numbers() {
 }
 
 #[test]
-fn test_config_bindings_line_contents_preserved() {
+fn test_extract_bindings_line_contents_preserved() {
     let partial = create_config_partial("/tmp/config.conf", "bindsym $mod+Return exec terminal");
     let variables = create_mock_variables();
-    let bindings: Vec<_> = partial.config_bindings(&variables).collect();
+    let bindings: Vec<_> = partial.extract_bindings(&variables).collect();
     assert_eq!(
         bindings[0].line_contents,
         "bindsym $mod+Return exec terminal"
@@ -316,11 +316,11 @@ fn test_config_bindings_line_contents_preserved() {
 }
 
 // ========================================================================
-// normalize_binding
+// expand_binding
 // ========================================================================
 
 #[test]
-fn test_normalize_binding_cases() {
+fn test_expand_binding_cases() {
     let variables = create_mock_variables();
     let cases = [
         ("$mod+Return", "Super+Return"),
@@ -335,41 +335,40 @@ fn test_normalize_binding_cases() {
         ("$mod+$alt+$mod", "Super+Alt+Super"),
     ];
     for (input, expected) in cases {
-        let result = crate::search::bindings::normalize_binding(input, &variables);
+        let result = crate::search::bindings::expand_binding(input, &variables);
         assert_eq!(result.as_ref(), expected, "Failed for input: {:?}", input);
     }
 }
 
 #[test]
-fn test_normalize_binding_empty_variables_map() {
+fn test_expand_binding_empty_variables_map() {
     let variables = BTreeMap::new();
-    let result = crate::search::bindings::normalize_binding("$mod+Return", &variables);
+    let result = crate::search::bindings::expand_binding("$mod+Return", &variables);
     assert_eq!(result.as_ref(), "$mod+Return");
 }
 
 #[test]
-fn test_normalize_binding_chained_variables() {
+fn test_expand_binding_chained_variables() {
     let mut variables = BTreeMap::new();
     variables.insert("mod".to_string(), "$wm_mod".to_string());
     variables.insert("wm_mod".to_string(), "Super".to_string());
-    let result = crate::search::bindings::normalize_binding("$mod+Return", &variables);
+    let result = crate::search::bindings::expand_binding("$mod+Return", &variables);
     assert_eq!(result.as_ref(), "Super+Return");
 }
 
 // ========================================================================
-// search_binding_result
+// search_bindings
 // ========================================================================
 
 #[test]
-fn test_search_binding_result_exact_match() {
+fn test_search_bindings_exact_match() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\ninclude bindings.conf",
         &[("bindings.conf", "bindsym $mod+Enter exec terminal")],
     );
     let resources = create_mock_resources();
-    let result =
-        crate::search::bindings::search_binding_result("Super+Enter", &full_config, &resources);
+    let result = crate::search::bindings::search_bindings("Super+Enter", &full_config, &resources);
     assert!(!result.0.is_empty());
     assert!(result
         .0
@@ -378,15 +377,14 @@ fn test_search_binding_result_exact_match() {
 }
 
 #[test]
-fn test_search_binding_result_substring_and_case_insensitive() {
+fn test_search_bindings_substring_and_case_insensitive() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\ninclude bindings.conf",
         &[("bindings.conf", "bindsym $mod+Shift+Q kill")],
     );
     let resources = create_mock_resources();
-    let result_sub =
-        crate::search::bindings::search_binding_result("Shift", &full_config, &resources);
+    let result_sub = crate::search::bindings::search_bindings("Shift", &full_config, &resources);
     assert!(!result_sub.0.is_empty());
 
     let full_config_ci = create_test_full_config(
@@ -395,12 +393,12 @@ fn test_search_binding_result_substring_and_case_insensitive() {
         &[("bindings.conf", "bindsym $mod+return exec terminal")],
     );
     let result_ci =
-        crate::search::bindings::search_binding_result("super+return", &full_config_ci, &resources);
+        crate::search::bindings::search_bindings("super+return", &full_config_ci, &resources);
     assert!(!result_ci.0.is_empty());
 }
 
 #[test]
-fn test_search_binding_result_multiple_config_files() {
+fn test_search_bindings_multiple_config_files() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\ninclude bindings.conf\ninclude more_bindings.conf",
@@ -410,8 +408,7 @@ fn test_search_binding_result_multiple_config_files() {
         ],
     );
     let resources = create_mock_resources();
-    let result =
-        crate::search::bindings::search_binding_result("Super+D", &full_config, &resources);
+    let result = crate::search::bindings::search_bindings("Super+D", &full_config, &resources);
     assert!(!result.0.is_empty());
     assert!(result
         .0
@@ -420,20 +417,19 @@ fn test_search_binding_result_multiple_config_files() {
 }
 
 #[test]
-fn test_search_binding_result_variable_resolution() {
+fn test_search_bindings_variable_resolution() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\nset $alt Alt\ninclude bindings.conf",
         &[("bindings.conf", "bindsym $mod+$alt+F fullscreen toggle")],
     );
     let resources = create_mock_resources();
-    let result =
-        crate::search::bindings::search_binding_result("Super+Alt+F", &full_config, &resources);
+    let result = crate::search::bindings::search_bindings("Super+Alt+F", &full_config, &resources);
     assert!(!result.0.is_empty());
 }
 
 #[test]
-fn test_search_binding_result_no_matches() {
+fn test_search_bindings_no_matches() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\ninclude bindings.conf",
@@ -441,12 +437,12 @@ fn test_search_binding_result_no_matches() {
     );
     let resources = create_mock_resources();
     let result =
-        crate::search::bindings::search_binding_result("Control+Delete", &full_config, &resources);
+        crate::search::bindings::search_bindings("Control+Delete", &full_config, &resources);
     assert!(result.0.is_empty());
 }
 
 #[test]
-fn test_search_binding_result_multiple_matches() {
+fn test_search_bindings_multiple_matches() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\ninclude bindings.conf",
@@ -456,29 +452,28 @@ fn test_search_binding_result_multiple_matches() {
         )],
     );
     let resources = create_mock_resources();
-    let result = crate::search::bindings::search_binding_result("Super", &full_config, &resources);
+    let result = crate::search::bindings::search_bindings("Super", &full_config, &resources);
     assert!(result.0.len() >= 2);
 }
 
 #[test]
-fn test_search_binding_result_from_trawl_resources() {
+fn test_search_bindings_from_trawl_resources() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $mod mod Super\ninclude bindings.conf",
         &[("bindings.conf", "bindsym $mod+Enter exec terminal")],
     );
     let resources = create_mock_resources();
-    let result =
-        crate::search::bindings::search_binding_result("Super+Enter", &full_config, &resources);
+    let result = crate::search::bindings::search_bindings("Super+Enter", &full_config, &resources);
     assert!(!result.0.is_empty());
 }
 
 // ========================================================================
-// FullConfig::new_from_session
+// FullConfig::load_for_session
 // ========================================================================
 
 #[test]
-fn test_new_from_session_valid_configs() {
+fn test_load_for_session_valid_configs() {
     for session in [Session::Wayland, Session::X11] {
         let fixture = TestFixture::new(session);
         let root_path: &'static Path =
@@ -492,13 +487,13 @@ fn test_new_from_session_valid_configs() {
         file.write_all(b"set $mod Super\ninclude bindings.conf")
             .unwrap();
 
-        let full_config = FullConfig::new_from_session(session, mappings).expect("Should succeed");
+        let full_config = FullConfig::load_for_session(session, mappings).expect("Should succeed");
         assert_eq!(full_config.partials.len(), 2);
     }
 }
 
 #[test]
-fn test_new_from_session_discovers_all_includes() {
+fn test_load_for_session_discovers_all_includes() {
     let fixture = TestFixture::new(Session::Wayland);
     let root_path: &'static Path = Box::leak(fixture.root_config_path.clone().into_boxed_path());
     let mappings: &SessionMappings = &[(Session::Wayland, root_path), (Session::X11, root_path)];
@@ -511,7 +506,7 @@ fn test_new_from_session_discovers_all_includes() {
         .unwrap();
 
     let full_config =
-        FullConfig::new_from_session(Session::Wayland, mappings).expect("Should succeed");
+        FullConfig::load_for_session(Session::Wayland, mappings).expect("Should succeed");
     assert_eq!(full_config.partials.len(), 3);
 
     let filenames: Vec<_> = full_config
@@ -529,7 +524,7 @@ fn test_new_from_session_discovers_all_includes() {
 }
 
 #[test]
-fn test_new_from_session_nested_includes() {
+fn test_load_for_session_nested_includes() {
     let fixture = TestFixture::new(Session::Wayland);
     let root_path: &'static Path = Box::leak(fixture.root_config_path.clone().into_boxed_path());
     let mappings: &SessionMappings = &[(Session::Wayland, root_path), (Session::X11, root_path)];
@@ -541,23 +536,23 @@ fn test_new_from_session_nested_includes() {
     file.write_all(b"include level1.conf").unwrap();
 
     let full_config =
-        FullConfig::new_from_session(Session::Wayland, mappings).expect("Should succeed");
+        FullConfig::load_for_session(Session::Wayland, mappings).expect("Should succeed");
     assert_eq!(full_config.partials.len(), 3);
 }
 
 #[test]
-fn test_new_from_session_nonexistent_root_config_returns_error() {
+fn test_load_for_session_nonexistent_root_config_returns_error() {
     let mappings: &SessionMappings = &[(
         Session::Wayland,
         Path::new("/tmp/regolith-nonexistent-test-root/config"),
     )];
 
-    let result = FullConfig::new_from_session(Session::Wayland, mappings);
+    let result = FullConfig::load_for_session(Session::Wayland, mappings);
     assert!(result.is_err());
 }
 
 #[test]
-fn test_new_from_session_nonexistent_included_config_skipped() {
+fn test_load_for_session_nonexistent_included_config_skipped() {
     let fixture = TestFixture::new(Session::Wayland);
     let root_path: &'static Path = Box::leak(fixture.root_config_path.clone().into_boxed_path());
     let mappings: &SessionMappings = &[(Session::Wayland, root_path), (Session::X11, root_path)];
@@ -566,12 +561,12 @@ fn test_new_from_session_nonexistent_included_config_skipped() {
     file.write_all(b"include nonexistent.conf").unwrap();
 
     let full_config =
-        FullConfig::new_from_session(Session::Wayland, mappings).expect("Should succeed");
+        FullConfig::load_for_session(Session::Wayland, mappings).expect("Should succeed");
     assert_eq!(full_config.partials.len(), 1);
 }
 
 #[test]
-fn test_new_from_session_with_sample_configs() {
+fn test_load_for_session_with_sample_configs() {
     let full_config = create_test_full_config(
         Session::Wayland,
         SAMPLE_ROOT_CONFIG,
@@ -584,17 +579,17 @@ fn test_new_from_session_with_sample_configs() {
 }
 
 // ========================================================================
-// search_keyword_result
+// search_keywords
 // ========================================================================
 
 #[test]
-fn test_search_keyword_single_line_match() {
+fn test_search_keywords_single_line_match() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\nbindsym $mod+Enter exec terminal",
         &[],
     );
-    let result = crate::search::keyword::search_keyword_result("terminal", &full_config);
+    let result = crate::search::keyword::search_keywords("terminal", &full_config);
     assert_eq!(result.0.len(), 1);
     assert_eq!(result.0[0].line_number, 2);
     assert_eq!(
@@ -604,7 +599,7 @@ fn test_search_keyword_single_line_match() {
 }
 
 #[test]
-fn test_search_keyword_multiple_lines_same_file() {
+fn test_search_keywords_multiple_lines_same_file() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "include bindings.conf",
@@ -613,14 +608,14 @@ fn test_search_keyword_multiple_lines_same_file() {
             "bindsym $mod+Enter exec terminal\nbindsym $mod+D exec dmenu_run\nbindsym $mod+Shift+Enter exec alt-terminal",
         )],
     );
-    let result = crate::search::keyword::search_keyword_result("terminal", &full_config);
+    let result = crate::search::keyword::search_keywords("terminal", &full_config);
     assert_eq!(result.0.len(), 2);
     assert_eq!(result.0[0].line_number, 1);
     assert_eq!(result.0[1].line_number, 3);
 }
 
 #[test]
-fn test_search_keyword_across_multiple_config_files() {
+fn test_search_keywords_across_multiple_config_files() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "include bindings.conf\ninclude more_bindings.conf",
@@ -629,7 +624,7 @@ fn test_search_keyword_across_multiple_config_files() {
             ("more_bindings.conf", "bindsym $mod+D exec dmenu_run"),
         ],
     );
-    let result = crate::search::keyword::search_keyword_result("exec", &full_config);
+    let result = crate::search::keyword::search_keywords("exec", &full_config);
     assert_eq!(result.0.len(), 2);
     let paths: Vec<_> = result
         .0
@@ -647,39 +642,39 @@ fn test_search_keyword_across_multiple_config_files() {
 }
 
 #[test]
-fn test_search_keyword_case_insensitive() {
+fn test_search_keywords_case_insensitive() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "bindsym $mod+Enter exec TERMINAL\nbindsym $mod+D exec dmenu_run",
         &[],
     );
-    let result_upper = crate::search::keyword::search_keyword_result("TERMINAL", &full_config);
-    let result_lower = crate::search::keyword::search_keyword_result("terminal", &full_config);
-    let result_mixed = crate::search::keyword::search_keyword_result("TeRmInAl", &full_config);
+    let result_upper = crate::search::keyword::search_keywords("TERMINAL", &full_config);
+    let result_lower = crate::search::keyword::search_keywords("terminal", &full_config);
+    let result_mixed = crate::search::keyword::search_keywords("TeRmInAl", &full_config);
     assert_eq!(result_upper.0.len(), 1);
     assert_eq!(result_lower.0.len(), 1);
     assert_eq!(result_mixed.0.len(), 1);
 }
 
 #[test]
-fn test_search_keyword_no_matches() {
+fn test_search_keywords_no_matches() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\nbindsym $mod+Enter exec terminal",
         &[],
     );
-    let result = crate::search::keyword::search_keyword_result("nonexistent", &full_config);
+    let result = crate::search::keyword::search_keywords("nonexistent", &full_config);
     assert!(result.0.is_empty());
 }
 
 #[test]
-fn test_search_keyword_line_number_and_file_path() {
+fn test_search_keywords_line_number_and_file_path() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set $mod Super\nbindsym $mod+Enter exec terminal\nbindsym $mod+D exec dmenu_run",
         &[],
     );
-    let result = crate::search::keyword::search_keyword_result("dmenu_run", &full_config);
+    let result = crate::search::keyword::search_keywords("dmenu_run", &full_config);
     assert_eq!(result.0.len(), 1);
     assert_eq!(result.0[0].line_number, 3);
 
@@ -688,7 +683,7 @@ fn test_search_keyword_line_number_and_file_path() {
         "include bindings.conf",
         &[("bindings.conf", "bindsym $mod+Enter exec terminal")],
     );
-    let result2 = crate::search::keyword::search_keyword_result("terminal", &full_config2);
+    let result2 = crate::search::keyword::search_keywords("terminal", &full_config2);
     assert_eq!(result2.0.len(), 1);
     assert!(result2.0[0].file_path.ends_with("bindings.conf"));
 }
@@ -735,18 +730,18 @@ fn test_get_session_type_invalid_values() {
 }
 
 // ========================================================================
-// search_resource_result
+// search_resources
 // ========================================================================
 
 #[test]
-fn test_search_resource_exact_match() {
+fn test_search_resources_exact_match() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $border regolithwm.border.width 3",
         &[],
     );
     let provider = MockResourceProvider::default();
-    let result = crate::search::resource::search_resource_result(
+    let result = crate::search::resource::search_resources(
         "regolithwm.border.width",
         &full_config,
         &provider,
@@ -758,7 +753,7 @@ fn test_search_resource_exact_match() {
 }
 
 #[test]
-fn test_search_resource_runtime_value() {
+fn test_search_resources_runtime_value() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $border regolithwm.border.width 3",
@@ -767,7 +762,7 @@ fn test_search_resource_runtime_value() {
     let mut resources = HashMap::new();
     resources.insert("regolithwm.border.width".to_string(), "5".to_string());
     let provider = MockResourceProvider::new(resources);
-    let result = crate::search::resource::search_resource_result(
+    let result = crate::search::resource::search_resources(
         "regolithwm.border.width",
         &full_config,
         &provider,
@@ -778,7 +773,7 @@ fn test_search_resource_runtime_value() {
 }
 
 #[test]
-fn test_search_resource_substring_and_fuzzy_match() {
+fn test_search_resources_substring_and_fuzzy_match() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $border regolithwm.border.width 3\nset_from_resource $font regolithwm.font.size 12",
@@ -787,11 +782,8 @@ fn test_search_resource_substring_and_fuzzy_match() {
     let provider = MockResourceProvider::default();
 
     // Substring match
-    let result_sub = crate::search::resource::search_resource_result(
-        "regolithwm.border",
-        &full_config,
-        &provider,
-    );
+    let result_sub =
+        crate::search::resource::search_resources("regolithwm.border", &full_config, &provider);
     assert!(!result_sub.has_exact_match);
     assert!(result_sub
         .matched_resources
@@ -799,7 +791,7 @@ fn test_search_resource_substring_and_fuzzy_match() {
         .any(|r| r == "regolithwm.border.width"));
 
     // Fuzzy match (typo)
-    let result_fuzzy = crate::search::resource::search_resource_result(
+    let result_fuzzy = crate::search::resource::search_resources(
         "regolithwm.border.heigth",
         &full_config,
         &provider,
@@ -812,18 +804,15 @@ fn test_search_resource_substring_and_fuzzy_match() {
 }
 
 #[test]
-fn test_search_resource_no_matches() {
+fn test_search_resources_no_matches() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $border regolithwm.border.width 3",
         &[],
     );
     let provider = MockResourceProvider::default();
-    let result = crate::search::resource::search_resource_result(
-        "nonexistent.resource",
-        &full_config,
-        &provider,
-    );
+    let result =
+        crate::search::resource::search_resources("nonexistent.resource", &full_config, &provider);
     assert!(!result.has_exact_match);
     assert!(result.runtime_value.is_none());
     assert!(result.default_value.is_none());
@@ -832,14 +821,14 @@ fn test_search_resource_no_matches() {
 }
 
 #[test]
-fn test_search_resource_case_insensitive() {
+fn test_search_resources_case_insensitive() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $border regolithwm.border.width 3",
         &[],
     );
     let provider = MockResourceProvider::default();
-    let result = crate::search::resource::search_resource_result(
+    let result = crate::search::resource::search_resources(
         "RegolithWM.Border.Width",
         &full_config,
         &provider,
@@ -849,7 +838,7 @@ fn test_search_resource_case_insensitive() {
 }
 
 #[test]
-fn test_search_resource_multiple_usages() {
+fn test_search_resources_multiple_usages() {
     let full_config = create_test_full_config(
         Session::Wayland,
         "set_from_resource $border regolithwm.border.width 3\ninclude more.conf",
@@ -859,7 +848,7 @@ fn test_search_resource_multiple_usages() {
         )],
     );
     let provider = MockResourceProvider::default();
-    let result = crate::search::resource::search_resource_result(
+    let result = crate::search::resource::search_resources(
         "regolithwm.border.width",
         &full_config,
         &provider,
@@ -869,7 +858,7 @@ fn test_search_resource_multiple_usages() {
 }
 
 #[test]
-fn test_search_resource_special_characters_and_runtime_only() {
+fn test_search_resources_special_characters_and_runtime_only() {
     // Special characters in name
     let full_config = create_test_full_config(
         Session::Wayland,
@@ -877,11 +866,8 @@ fn test_search_resource_special_characters_and_runtime_only() {
         &[],
     );
     let provider = MockResourceProvider::default();
-    let result = crate::search::resource::search_resource_result(
-        "regolithwm.font.name",
-        &full_config,
-        &provider,
-    );
+    let result =
+        crate::search::resource::search_resources("regolithwm.font.name", &full_config, &provider);
     assert!(result.has_exact_match);
     assert_eq!(
         result.default_value,
@@ -893,7 +879,7 @@ fn test_search_resource_special_characters_and_runtime_only() {
     let mut resources = HashMap::new();
     resources.insert("regolithwm.border.width".to_string(), "2".to_string());
     let provider2 = MockResourceProvider::new(resources);
-    let result2 = crate::search::resource::search_resource_result(
+    let result2 = crate::search::resource::search_resources(
         "regolithwm.border.width",
         &full_config2,
         &provider2,
@@ -986,13 +972,13 @@ where
 }
 
 #[test]
-fn test_new_full_config_from_session() {
+fn test_load_full_config_from_session() {
     unsafe {
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
     }
     let config_partials = setup_config_partials(get_mock_configurations, &get_session_mappings());
 
-    let full_config = FullConfig::new_from_session(Session::Wayland, &get_session_mappings())
+    let full_config = FullConfig::load_for_session(Session::Wayland, &get_session_mappings())
         .expect("Failed to create FullConfig from session");
 
     for (path, content) in config_partials {

@@ -10,7 +10,7 @@ use crate::cli_args::{EjectArgs, Session};
 pub mod search;
 pub mod set_resource;
 
-pub use search::{search_config, SearchResult};
+pub use search::{execute_search, SearchResult};
 pub use set_resource::set_user_xresource;
 
 /// Ejects a config partial from the system configuration.

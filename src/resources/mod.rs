@@ -14,7 +14,7 @@ pub use xrdb::XrdbResourceProvider;
 /// Implementations retrieve the current X resource database, which contains
 /// key-value pairs used by X applications for configuration.
 pub trait ResourceProvider {
-    /// Retrieves all available X resources.
+    /// Queries the provider for all available X resources.
     ///
     /// # Returns
     ///
@@ -24,5 +24,5 @@ pub trait ResourceProvider {
     ///
     /// Returns an error if the resources cannot be retrieved (e.g.,
     /// the display server is unavailable or the D-Bus service is not running).
-    fn get_all_resources(&self) -> anyhow::Result<std::collections::HashMap<String, String>>;
+    fn query_resources(&self) -> anyhow::Result<std::collections::HashMap<String, String>>;
 }

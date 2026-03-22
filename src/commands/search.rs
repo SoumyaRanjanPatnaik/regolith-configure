@@ -29,7 +29,7 @@ impl<'a> Display for SearchResult<'a> {
     }
 }
 
-/// Searches the configuration for entries matching the given pattern.
+/// Executes a search on the configuration for entries matching the given pattern.
 ///
 /// # Arguments
 ///
@@ -42,7 +42,7 @@ impl<'a> Display for SearchResult<'a> {
 ///
 /// `Some(SearchResult)` containing matching entries. Returns `None` only
 /// if the resource provider fails for a bindings search.
-pub fn search_config<'a>(
+pub fn execute_search<'a>(
     filter: FilterType,
     pattern: &str,
     config: &'a FullConfig,
@@ -50,17 +50,17 @@ pub fn search_config<'a>(
 ) -> Option<SearchResult<'a>> {
     match filter {
         FilterType::Bindings => {
-            let trawl_resources = provider.get_all_resources().ok()?;
-            Some(SearchResult::Bindings(bindings::search_binding_result(
+            let trawl_resources = provider.query_resources().ok()?;
+            Some(SearchResult::Bindings(bindings::search_bindings(
                 pattern,
                 config,
                 &trawl_resources,
             )))
         }
-        FilterType::Keyword => Some(SearchResult::Keyword(keyword::search_keyword_result(
+        FilterType::Keyword => Some(SearchResult::Keyword(keyword::search_keywords(
             pattern, config,
         ))),
-        FilterType::Resource => Some(SearchResult::Resource(resource::search_resource_result(
+        FilterType::Resource => Some(SearchResult::Resource(resource::search_resources(
             pattern, config, provider,
         ))),
     }
