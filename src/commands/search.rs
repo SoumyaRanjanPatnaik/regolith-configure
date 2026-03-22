@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use crate::cli_args::FilterType;
+use crate::cli_args::{FilterType, OutputMode};
 use crate::resources::ResourceProvider;
 use crate::search::{bindings, keyword, resource};
 use crate::FullConfig;
@@ -19,12 +19,23 @@ pub enum SearchResult<'a> {
     Resource(resource::ResourceSearchResult),
 }
 
+impl<'a> SearchResult<'a> {
+    /// Formats the search result according to the specified output mode.
+    pub fn format(&self, mode: OutputMode) -> String {
+        match self {
+            SearchResult::Bindings(inner) => inner.to_string(),
+            SearchResult::Keyword(inner) => inner.to_string(),
+            SearchResult::Resource(inner) => inner.format(mode),
+        }
+    }
+}
+
 impl<'a> Display for SearchResult<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SearchResult::Bindings(inner) => inner.fmt(f),
             SearchResult::Keyword(inner) => inner.fmt(f),
-            SearchResult::Resource(inner) => inner.fmt(f),
+            SearchResult::Resource(inner) => write!(f, "{}", inner.format(OutputMode::Summary)),
         }
     }
 }
@@ -49,7 +60,7 @@ pub fn execute_search<'a>(
     provider: &dyn ResourceProvider,
 ) -> Option<SearchResult<'a>> {
     match filter {
-        FilterType::Bindings => {
+        FilterType::Binding => {
             let trawl_resources = provider.query_resources().ok()?;
             Some(SearchResult::Bindings(bindings::search_bindings(
                 pattern,

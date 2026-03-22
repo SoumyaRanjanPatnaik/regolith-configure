@@ -55,7 +55,7 @@ fn main() -> Result<()> {
             &wm_config,
             provider,
         )
-        .map(|r| r.to_string()),
+        .map(|r| r.format(args.output_mode())),
         cli_args::OperationType::Eject(_eject_args) => todo!(),
         cli_args::OperationType::Reconcile { .. } => todo!(),
         cli_args::OperationType::SetResource(set_args) => {

@@ -3,17 +3,17 @@
 use std::{
     cmp::Ordering,
     collections::BTreeSet,
-    fmt::Display,
     path::{Path, PathBuf},
 };
 
 use crate::{
+    cli_args::OutputMode,
     config::xresources::{get_user_xresources_path, XresourceConfig},
     output, FullConfig,
 };
 
-const MAX_SIMILAR_EDIT_SCORE: usize = 10;
 const MAX_SIMILAR_RESULTS: usize = 5;
+const SIMILAR_EDIT_DISTANCE_PERCENT: usize = 15;
 
 /// A line in a config file that uses a resource.
 #[derive(Debug)]
@@ -52,9 +52,12 @@ pub struct ResourceSearchResult {
     pub usages: Vec<ResourceUsageDef>,
     /// User overrides in the Xresources file.
     pub overrides: Vec<ResourceOverrideDef>,
-    /// All resources matching the query (substring match).
+    /// Resources where the query appears as a substring (case-insensitive).
+    /// These are direct/partial matches based on the search term.
     pub matched_resources: Vec<String>,
-    /// Similar resources (fuzzy match for typos).
+    /// Resources with similar names using fuzzy matching (Levenshtein distance).
+    /// Only included if edit distance ≤ 15% of max(query, candidate) length.
+    /// Intended for typo suggestions when no exact match is found.
     pub similar_resources: Vec<String>,
 }
 
@@ -114,7 +117,9 @@ fn collect_similar_resources(query: &str, candidates: &BTreeSet<String>) -> Vec<
             let candidate_lower = candidate.to_lowercase();
             let is_substring = candidate_lower.contains(&query_lower);
             let distance = strsim::levenshtein(&query_lower, &candidate_lower);
-            if !is_substring && distance > MAX_SIMILAR_EDIT_SCORE {
+            let max_len = query.len().max(candidate.len());
+            let threshold = max_len * SIMILAR_EDIT_DISTANCE_PERCENT / 100;
+            if !is_substring && distance > threshold {
                 return None;
             }
 
@@ -299,34 +304,67 @@ pub fn search_resources(
     }
 }
 
-impl Display for ResourceSearchResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "{}: {}",
-            output::section_header("Resource Query"),
-            output::resource_name(&self.resource_name)
-        )?;
+impl ResourceSearchResult {
+    pub fn format(&self, mode: OutputMode) -> String {
+        match mode {
+            OutputMode::Minimal => self.format_minimal(),
+            OutputMode::Summary => self.format_summary(),
+            OutputMode::Full => self.format_full(),
+        }
+    }
 
-        if !self.matched_resources.is_empty() {
-            writeln!(f)?;
-            writeln!(f, "{}", output::section_header("Matched Resources:"))?;
-            for matched in &self.matched_resources {
-                writeln!(f, "  - {}", output::resource_name(matched))?;
-            }
+    fn format_minimal(&self) -> String {
+        let mut output = String::new();
+
+        if !self.has_exact_match {
+            output.push_str(&format!(
+                "No exact match found for '{}'. Try --summary or --full to see related resources.\n",
+                self.resource_name
+            ));
+            return output;
         }
 
-        writeln!(f)?;
+        if let Some(v) = &self.runtime_value {
+            output.push_str(&format!("Runtime Value: {}\n", output::value_found(v)));
+        }
+
+        if let Some(v) = &self.default_value {
+            let default_str = if self.runtime_value.is_none() {
+                format!(
+                    "{} {}",
+                    output::default_value(v),
+                    output::in_use("(In use)")
+                )
+            } else {
+                output::default_value(v).to_string()
+            };
+            output.push_str(&format!("Default Value: {}\n", default_str));
+        }
+
+        if let Some(o) = self.overrides.first() {
+            output.push_str(&format!(
+                "Custom Override: {}\n",
+                output::override_value(&o.value)
+            ));
+        }
+
+        output
+    }
+
+    fn format_summary(&self) -> String {
+        let mut output = String::new();
+
+        output.push_str(&format!(
+            "Resource Query: {}\n",
+            output::resource_name(&self.resource_name)
+        ));
+
+        output.push('\n');
         let runtime_display = match &self.runtime_value {
             Some(v) => output::value_found(v),
             None => output::value_not_found("Not found"),
         };
-        writeln!(
-            f,
-            "{}: {}",
-            output::section_header("Runtime Value"),
-            runtime_display
-        )?;
+        output.push_str(&format!("Runtime Value: {}\n", runtime_display));
 
         let default_val = match &self.default_value {
             Some(v) if self.runtime_value.is_none() => {
@@ -339,66 +377,119 @@ impl Display for ResourceSearchResult {
             Some(v) => output::default_value(v).to_string(),
             None => output::value_not_found("Not found").to_string(),
         };
-        writeln!(
-            f,
-            "{}: {}",
-            output::section_header("Default Value"),
-            default_val
-        )?;
+        output.push_str(&format!("Default Value: {}\n", default_val));
+
+        let has_matched = !self.matched_resources.is_empty();
+        let has_similar = !self.similar_resources.is_empty();
+        if has_matched || has_similar {
+            output.push('\n');
+            output.push_str(&format!(
+                "{}\n",
+                output::section_header("Related Resources:")
+            ));
+            if has_matched {
+                output.push_str("  Matched (substring):\n");
+                for matched in &self.matched_resources {
+                    output.push_str(&format!("    - {}\n", output::resource_name(matched)));
+                }
+            }
+            if has_similar {
+                output.push_str("  Similar (fuzzy/typo):\n");
+                for resource in &self.similar_resources {
+                    output.push_str(&format!("    - {}\n", output::similar_item(resource)));
+                }
+            }
+        }
+
+        output
+    }
+
+    fn format_full(&self) -> String {
+        let mut output = String::new();
+
+        output.push_str(&format!(
+            "Resource Query: {}\n",
+            output::resource_name(&self.resource_name)
+        ));
+
+        output.push('\n');
+        let runtime_display = match &self.runtime_value {
+            Some(v) => output::value_found(v),
+            None => output::value_not_found("Not found"),
+        };
+        output.push_str(&format!("Runtime Value: {}\n", runtime_display));
+
+        let default_val = match &self.default_value {
+            Some(v) if self.runtime_value.is_none() => {
+                format!(
+                    "{} {}",
+                    output::default_value(v),
+                    output::in_use("(In use)")
+                )
+            }
+            Some(v) => output::default_value(v).to_string(),
+            None => output::value_not_found("Not found").to_string(),
+        };
+        output.push_str(&format!("Default Value: {}\n", default_val));
 
         let override_val = self
             .overrides
             .first()
             .map(|o| output::override_value(&o.value).to_string())
             .unwrap_or_else(|| output::value_not_found("Not found").to_string());
-        writeln!(
-            f,
-            "{}: {}",
-            output::section_header("Custom Override"),
-            override_val
-        )?;
+        output.push_str(&format!("Custom Override: {}\n", override_val));
 
-        writeln!(f)?;
-        writeln!(
-            f,
-            "{}",
+        let has_matched = !self.matched_resources.is_empty();
+        let has_similar = !self.similar_resources.is_empty();
+        if has_matched || has_similar {
+            output.push('\n');
+            output.push_str(&format!(
+                "{}\n",
+                output::section_header("Related Resources:")
+            ));
+            if has_matched {
+                output.push_str("  Matched (substring):\n");
+                for matched in &self.matched_resources {
+                    output.push_str(&format!("    - {}\n", output::resource_name(matched)));
+                }
+            }
+            if has_similar {
+                output.push_str("  Similar (fuzzy/typo):\n");
+                for resource in &self.similar_resources {
+                    output.push_str(&format!("    - {}\n", output::similar_item(resource)));
+                }
+            }
+        }
+
+        output.push('\n');
+        output.push_str(&format!(
+            "{}\n",
             output::section_header("Related Configuration Lines:")
-        )?;
+        ));
         for usage in &self.usages {
-            writeln!(
-                f,
-                "{} - Line {}",
+            output.push_str(&format!(
+                "{} - Line {}\n",
                 output::file_path(&usage.file_path.to_string_lossy()),
                 output::line_number(usage.line_number)
-            )?;
-            writeln!(f, "    {}", usage.line_contents)?;
+            ));
+            output.push_str(&format!("    {}\n", usage.line_contents));
         }
 
         if self.has_exact_match {
-            writeln!(f)?;
-            writeln!(
-                f,
-                "{}",
+            output.push('\n');
+            output.push_str(&format!(
+                "{}\n",
                 output::section_header("To override this resource, run the following command:")
-            )?;
-            writeln!(
-                f,
-                "{}",
+            ));
+            output.push_str(&format!(
+                "{}\n",
                 output::command(&format!(
                     "regolith-configure set-resource {} \"<custom_value>\"",
                     self.resource_name
                 ))
-            )?;
+            ));
         }
 
-        if !self.similar_resources.is_empty() {
-            writeln!(f)?;
-            writeln!(f, "{}", output::section_header("Similar Resources:"))?;
-            for resource in &self.similar_resources {
-                writeln!(f, "  - {}", output::similar_item(resource))?;
-            }
-        }
-
-        Ok(())
+        output
     }
 }

@@ -25,7 +25,7 @@
 //!
 //! // Search for keybindings
 //! let provider = XrdbResourceProvider;
-//! let result = execute_search(FilterType::Bindings, "Super+Enter", &config, &provider);
+//! let result = execute_search(FilterType::Binding, "Super+Enter", &config, &provider);
 //!
 //! // Set a user X resource
 //! let path = set_user_xresource("regolithwm.border.width", "2")?;

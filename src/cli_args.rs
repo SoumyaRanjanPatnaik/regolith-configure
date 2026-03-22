@@ -6,6 +6,18 @@
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+/// Output format for search results.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub enum OutputMode {
+    /// Show only values (runtime, default, override)
+    Minimal,
+    /// Show summary with related resources
+    #[default]
+    Summary,
+    /// Show all details including usage lines
+    Full,
+}
+
 /// Command-line arguments for regolith-configure.
 #[derive(Parser, Debug)]
 #[command(name = "rust-config")]
@@ -15,6 +27,18 @@ pub struct CLIArguments {
     /// Optional if $XDG_DESKTOP_PORTAL is defined
     #[arg(short, long, global = true, value_enum)]
     session: Option<Session>,
+
+    /// Show only values (runtime, default, override)
+    #[arg(long, global = true, group = "output-mode")]
+    minimal: bool,
+
+    /// Show summary with related resources (default)
+    #[arg(long, global = true, group = "output-mode")]
+    summary: bool,
+
+    /// Show all details including usage lines
+    #[arg(long, global = true, group = "output-mode")]
+    full: bool,
 
     #[command(subcommand)]
     sub_command: OperationType,
@@ -29,6 +53,17 @@ impl CLIArguments {
     /// Returns the operation to perform.
     pub fn sub_command(&self) -> &OperationType {
         &self.sub_command
+    }
+
+    /// Returns the output mode for search results.
+    pub fn output_mode(&self) -> OutputMode {
+        if self.minimal {
+            OutputMode::Minimal
+        } else if self.full {
+            OutputMode::Full
+        } else {
+            OutputMode::Summary
+        }
     }
 }
 
@@ -58,8 +93,11 @@ pub enum Session {
 /// Search filter type for narrowing results.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum FilterType {
-    Bindings,
+    #[value(alias = "bindings")]
+    Binding,
+    #[value(alias = "keywords")]
     Keyword,
+    #[value(alias = "resources")]
     Resource,
 }
 
