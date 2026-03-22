@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{config::xresources::XresourceConfig, FullConfig};
+use crate::{
+    config::xresources::{get_user_xresources_path, XresourceConfig},
+    FullConfig,
+};
 
 const MAX_SIMILAR_EDIT_SCORE: usize = 10;
 const MAX_SIMILAR_RESULTS: usize = 5;
@@ -120,19 +123,7 @@ pub fn search_resource_result(
 ) -> ResourceSearchResult {
     let query_lower = resource.to_lowercase();
     let all_runtime_resources = provider.get_all_resources().unwrap_or_default();
-    let xresources_path = std::env::var("HOME")
-        .ok()
-        .map(|home| {
-            PathBuf::from(home)
-                .join(".config")
-                .join("regolith3")
-                .join("Xresources")
-        })
-        .unwrap_or_else(|| {
-            PathBuf::from(".config")
-                .join("regolith3")
-                .join("Xresources")
-        });
+    let xresources_path = get_user_xresources_path();
 
     let mut candidates = resource_candidates(config, &xresources_path);
     for runtime_resource in all_runtime_resources.keys() {
@@ -318,11 +309,12 @@ impl Display for ResourceSearchResult {
 
         if self.has_exact_match {
             writeln!(f)?;
+            writeln!(f, "To override this resource, run the following command:")?;
             writeln!(
                 f,
-                "To override this resource, add the following line to your ~/.config/regolith3/Xresources file:"
+                "regolith-configure set-resource {} \"<custom_value>\"",
+                self.resource_name
             )?;
-            writeln!(f, "{}: <custom_value>", self.resource_name)?;
         }
 
         if !self.similar_resources.is_empty() {

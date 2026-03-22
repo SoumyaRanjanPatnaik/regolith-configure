@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use regolith_config::{
     cli_args::{self, CLIArguments, Session},
+    config::xresources::set_user_xresource,
     get_session_type,
     resources::{ResourceProvider, TrawlResourceProvider, XrdbResourceProvider},
     search::search_config,
@@ -55,9 +56,19 @@ fn main() -> Result<()> {
             search_args.pattern(),
             &wm_config,
             provider,
-        ),
+        )
+        .map(|r| r.to_string()),
         cli_args::OperationType::Eject(_eject_args) => todo!(),
         cli_args::OperationType::Reconcile { .. } => todo!(),
+        cli_args::OperationType::SetResource(set_args) => {
+            let path = set_user_xresource(set_args.resource(), set_args.value())?;
+            Some(format!(
+                "Successfully set '{}' to '{}' in {}",
+                set_args.resource(),
+                set_args.value(),
+                path.display()
+            ))
+        }
     }
     .ok_or(anyhow!("Operation did not return any result"))?;
 

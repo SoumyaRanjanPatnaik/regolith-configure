@@ -33,6 +33,9 @@ pub enum OperationType {
 
     /// Help the user diff and reconcile upstream configs with their local versions
     Reconcile { name: String },
+
+    /// Set the value of a resource in ~/.config/regolith3/Xresources
+    SetResource(SetResourceArgs),
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
@@ -100,3 +103,22 @@ impl EjectArgs {
 
 #[derive(Args, Debug)]
 pub struct ReconcileArgs {}
+
+#[derive(Args, Debug)]
+pub struct SetResourceArgs {
+    /// The resource name to set
+    resource: String,
+
+    /// The value to assign to the resource
+    value: String,
+}
+
+impl SetResourceArgs {
+    pub fn resource(&self) -> &str {
+        &self.resource
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}

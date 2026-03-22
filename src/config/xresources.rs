@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::Read;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -98,6 +98,85 @@ impl XresourceConfig {
     pub fn get_entry(&self, key: &str) -> Option<&XresourceEntry> {
         self.entries.iter().find(|entry| entry.key == key)
     }
+}
+
+pub fn get_user_xresources_path() -> PathBuf {
+    match std::env::var("HOME") {
+        Ok(home) => PathBuf::from(home)
+            .join(".config")
+            .join("regolith3")
+            .join("Xresources"),
+        Err(_) => PathBuf::from(".config")
+            .join("regolith3")
+            .join("Xresources"),
+    }
+}
+
+pub fn set_user_xresource(key: &str, value: &str) -> Result<PathBuf> {
+    let xresources_path = get_user_xresources_path();
+
+    if let Some(parent) = xresources_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create directory: {:?}", parent))?;
+    }
+
+    let content = match File::open(&xresources_path) {
+        Ok(mut file) => {
+            let mut buf = String::new();
+            file.read_to_string(&mut buf)
+                .with_context(|| format!("Failed to read file: {:?}", xresources_path))?;
+            buf
+        }
+        Err(_) => String::new(),
+    };
+
+    let mut lines: Vec<String> = content.lines().map(String::from).collect();
+    let mut found = false;
+    let key_lower = key.to_lowercase();
+
+    for line in &mut lines {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() || trimmed.starts_with('!') || trimmed.starts_with("#include") {
+            continue;
+        }
+
+        if let Some(colon_pos) = trimmed.find(':') {
+            let existing_key = trimmed[..colon_pos].trim().to_lowercase();
+            if existing_key == key_lower {
+                *line = format!("{}: {}", key, value);
+                found = true;
+                break;
+            }
+        }
+    }
+
+    if !found {
+        if let Some(last) = lines.last() {
+            if !last.trim().is_empty() {
+                lines.push(String::new());
+            }
+        }
+        lines.push(format!("{}: {}", key, value));
+    }
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&xresources_path)
+        .with_context(|| format!("Failed to open file for writing: {:?}", xresources_path))?;
+
+    for (i, line) in lines.iter().enumerate() {
+        if i < lines.len() - 1 {
+            writeln!(file, "{}", line)
+        } else {
+            write!(file, "{}", line)
+        }
+        .with_context(|| format!("Failed to write to file: {:?}", xresources_path))?;
+    }
+
+    Ok(xresources_path)
 }
 
 #[cfg(test)]
@@ -327,5 +406,102 @@ mod tests {
         let config = XresourceConfig::new(&path).unwrap();
         assert!(config.get_entry("Regolithwm.border.width").is_none());
         assert!(config.get_entry("regolithwm.border.width").is_some());
+    }
+
+    // --- set_user_xresource ---
+
+    #[test]
+    fn set_user_xresource_creates_new_file() {
+        let dir = create_temp_config_dir();
+        let path = dir.path().join(".config/regolith3/Xresources");
+
+        // Override path via environment for testing
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = set_user_xresource("test.key", "test_value");
+        assert!(result.is_ok());
+        assert!(path.exists());
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("test.key: test_value"));
+    }
+
+    #[test]
+    fn set_user_xresource_updates_existing_key() {
+        let dir = create_temp_config_dir();
+        let config_dir = dir.path().join(".config/regolith3");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let path = config_dir.join("Xresources");
+        std::fs::write(
+            &path,
+            "regolithwm.border.width: 2\nregolithwm.font.size: 12\n",
+        )
+        .unwrap();
+
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = set_user_xresource("regolithwm.border.width", "5");
+        assert!(result.is_ok());
+
+        let config = XresourceConfig::new(&path).unwrap();
+        let entry = config.get_entry("regolithwm.border.width").unwrap();
+        assert_eq!(entry.value, "5");
+    }
+
+    #[test]
+    fn set_user_xresource_appends_to_existing_file() {
+        let dir = create_temp_config_dir();
+        let config_dir = dir.path().join(".config/regolith3");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let path = config_dir.join("Xresources");
+        std::fs::write(&path, "existing.key: value\n").unwrap();
+
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = set_user_xresource("new.key", "new_value");
+        assert!(result.is_ok());
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("existing.key: value"));
+        assert!(content.contains("new.key: new_value"));
+    }
+
+    #[test]
+    fn set_user_xresource_case_insensitive_update() {
+        let dir = create_temp_config_dir();
+        let config_dir = dir.path().join(".config/regolith3");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let path = config_dir.join("Xresources");
+        std::fs::write(&path, "regolithwm.border.width: 2\n").unwrap();
+
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = set_user_xresource("Regolithwm.Border.Width", "10");
+        assert!(result.is_ok());
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("Regolithwm.Border.Width: 10"));
+    }
+
+    #[test]
+    fn set_user_xresource_creates_directory_if_missing() {
+        let dir = create_temp_config_dir();
+        let nested_path = dir.path().join(".config/regolith3/Xresources");
+
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+        }
+
+        let result = set_user_xresource("test.key", "value");
+        assert!(result.is_ok());
+        assert!(nested_path.exists());
     }
 }
