@@ -7,9 +7,10 @@ use std::{
 };
 
 use crate::{
+    FullConfig,
     cli_args::OutputMode,
-    config::xresources::{get_user_xresources_path, XresourceConfig},
-    output, FullConfig,
+    config::xresources::{XresourceConfig, get_user_xresources_path},
+    output,
 };
 
 const MAX_SIMILAR_RESULTS: usize = 5;
@@ -225,46 +226,38 @@ pub fn search_resources(
             .collect()
     };
 
-    let usages: Vec<_> = config
-        .partials
-        .iter()
-        .flat_map(|partial| {
-            partial
-                .config
-                .lines()
-                .enumerate()
-                .filter_map(|(index, line)| {
-                    let trimmed = line.trim();
-                    let lower_line = trimmed.to_lowercase();
+    let usages: Vec<_> = if has_exact_match {
+        config
+            .partials
+            .iter()
+            .flat_map(|partial| {
+                partial
+                    .config
+                    .lines()
+                    .enumerate()
+                    .filter_map(|(index, line)| {
+                        let trimmed = line.trim();
+                        let lower_line = trimmed.to_lowercase();
 
-                    let is_match = if has_exact_match {
                         let has_exact_resource = lower_line.contains(&query_lower);
                         let has_variable = matched_variables
                             .iter()
                             .any(|variable| lower_line.contains(variable));
-                        has_exact_resource || has_variable
-                    } else {
-                        let has_resource_match = matched_resources
-                            .iter()
-                            .any(|name| lower_line.contains(&name.to_lowercase()));
-                        let has_variable_match = matched_variables
-                            .iter()
-                            .any(|variable| lower_line.contains(&variable.to_lowercase()));
-                        let has_query_match = lower_line.contains(&query_lower);
-                        has_resource_match || has_variable_match || has_query_match
-                    };
 
-                    if is_match {
-                        return Some(ResourceUsageDef {
-                            file_path: partial.file_name.clone(),
-                            line_number: index + 1,
-                            line_contents: line.to_string(),
-                        });
-                    }
-                    None
-                })
-        })
-        .collect();
+                        if has_exact_resource || has_variable {
+                            return Some(ResourceUsageDef {
+                                file_path: partial.file_name.clone(),
+                                line_number: index + 1,
+                                line_contents: line.to_string(),
+                            });
+                        }
+                        None
+                    })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let overrides: Vec<_> = XresourceConfig::load(&xresources_path)
         .ok()
@@ -313,154 +306,87 @@ impl ResourceSearchResult {
         }
     }
 
-    fn format_minimal(&self) -> String {
-        let mut output = String::new();
+    fn format_no_match_message(&self, message: &str) -> String {
+        format!("{}", output::value_not_found(message))
+    }
 
+    fn format_resource_query_header(&self) -> String {
+        format!(
+            "Resource Query: {}\n",
+            output::resource_name(&self.resource_name)
+        )
+    }
+
+    fn format_runtime_value(&self) -> Option<String> {
         if !self.has_exact_match {
-            output.push_str(&format!(
-                "No exact match found for '{}'. Try --summary or --full to see related resources.\n",
-                self.resource_name
-            ));
-            return output;
+            return None;
         }
+        self.runtime_value
+            .as_ref()
+            .map(|v| format!("Runtime Value: {}\n", output::value_found(v)))
+    }
 
-        if let Some(v) = &self.runtime_value {
-            output.push_str(&format!("Runtime Value: {}\n", output::value_found(v)));
+    fn format_default_value(&self) -> Option<String> {
+        if !self.has_exact_match {
+            return None;
         }
-
-        if let Some(v) = &self.default_value {
-            let default_str = if self.runtime_value.is_none() {
+        self.default_value.as_ref().map(|v| {
+            if self.runtime_value.is_none() {
                 format!(
-                    "{} {}",
+                    "Default Value: {} {}\n",
                     output::default_value(v),
                     output::in_use("(In use)")
                 )
             } else {
-                output::default_value(v).to_string()
-            };
-            output.push_str(&format!("Default Value: {}\n", default_str));
-        }
-
-        if let Some(o) = self.overrides.first() {
-            output.push_str(&format!(
-                "Custom Override: {}\n",
-                output::override_value(&o.value)
-            ));
-        }
-
-        output
+                format!("Default Value: {}\n", output::default_value(v))
+            }
+        })
     }
 
-    fn format_summary(&self) -> String {
-        let mut output = String::new();
-
-        output.push_str(&format!(
-            "Resource Query: {}\n",
-            output::resource_name(&self.resource_name)
-        ));
-
-        output.push('\n');
-        let runtime_display = match &self.runtime_value {
-            Some(v) => output::value_found(v),
-            None => output::value_not_found("Not found"),
-        };
-        output.push_str(&format!("Runtime Value: {}\n", runtime_display));
-
-        let default_val = match &self.default_value {
-            Some(v) if self.runtime_value.is_none() => {
-                format!(
-                    "{} {}",
-                    output::default_value(v),
-                    output::in_use("(In use)")
-                )
-            }
-            Some(v) => output::default_value(v).to_string(),
-            None => output::value_not_found("Not found").to_string(),
-        };
-        output.push_str(&format!("Default Value: {}\n", default_val));
-
-        let has_matched = !self.matched_resources.is_empty();
-        let has_similar = !self.similar_resources.is_empty();
-        if has_matched || has_similar {
-            output.push('\n');
-            output.push_str(&format!(
-                "{}\n",
-                output::section_header("Related Resources:")
-            ));
-            if has_matched {
-                output.push_str("  Matched (substring):\n");
-                for matched in &self.matched_resources {
-                    output.push_str(&format!("    - {}\n", output::resource_name(matched)));
-                }
-            }
-            if has_similar {
-                output.push_str("  Similar (fuzzy/typo):\n");
-                for resource in &self.similar_resources {
-                    output.push_str(&format!("    - {}\n", output::similar_item(resource)));
-                }
-            }
+    fn format_custom_override(&self) -> Option<String> {
+        if !self.has_exact_match {
+            return None;
         }
-
-        output
-    }
-
-    fn format_full(&self) -> String {
-        let mut output = String::new();
-
-        output.push_str(&format!(
-            "Resource Query: {}\n",
-            output::resource_name(&self.resource_name)
-        ));
-
-        output.push('\n');
-        let runtime_display = match &self.runtime_value {
-            Some(v) => output::value_found(v),
-            None => output::value_not_found("Not found"),
-        };
-        output.push_str(&format!("Runtime Value: {}\n", runtime_display));
-
-        let default_val = match &self.default_value {
-            Some(v) if self.runtime_value.is_none() => {
-                format!(
-                    "{} {}",
-                    output::default_value(v),
-                    output::in_use("(In use)")
-                )
-            }
-            Some(v) => output::default_value(v).to_string(),
-            None => output::value_not_found("Not found").to_string(),
-        };
-        output.push_str(&format!("Default Value: {}\n", default_val));
-
-        let override_val = self
-            .overrides
+        self.overrides
             .first()
-            .map(|o| output::override_value(&o.value).to_string())
-            .unwrap_or_else(|| output::value_not_found("Not found").to_string());
-        output.push_str(&format!("Custom Override: {}\n", override_val));
+            .map(|o| format!("Custom Override: {}\n", output::override_value(&o.value)))
+    }
 
+    fn format_related_resources(&self) -> Option<String> {
         let has_matched = !self.matched_resources.is_empty();
         let has_similar = !self.similar_resources.is_empty();
-        if has_matched || has_similar {
-            output.push('\n');
-            output.push_str(&format!(
-                "{}\n",
-                output::section_header("Related Resources:")
-            ));
-            if has_matched {
-                output.push_str("  Matched (substring):\n");
-                for matched in &self.matched_resources {
-                    output.push_str(&format!("    - {}\n", output::resource_name(matched)));
-                }
-            }
-            if has_similar {
-                output.push_str("  Similar (fuzzy/typo):\n");
-                for resource in &self.similar_resources {
-                    output.push_str(&format!("    - {}\n", output::similar_item(resource)));
-                }
-            }
+
+        if !has_matched && !has_similar {
+            return None;
         }
 
+        let mut output = String::new();
+        output.push('\n');
+        output.push_str(&format!(
+            "{}\n",
+            output::section_header("Related Resources:")
+        ));
+        if has_matched {
+            output.push_str("  Matched (substring):\n");
+            for matched in &self.matched_resources {
+                output.push_str(&format!("    - {}\n", output::resource_name(matched)));
+            }
+        }
+        if has_similar {
+            output.push_str("  Similar (fuzzy/typo):\n");
+            for resource in &self.similar_resources {
+                output.push_str(&format!("    - {}\n", output::similar_item(resource)));
+            }
+        }
+        Some(output)
+    }
+
+    fn format_configuration_lines(&self) -> Option<String> {
+        if self.usages.is_empty() {
+            return None;
+        }
+
+        let mut output = String::new();
         output.push('\n');
         output.push_str(&format!(
             "{}\n",
@@ -474,20 +400,118 @@ impl ResourceSearchResult {
             ));
             output.push_str(&format!("    {}\n", usage.line_contents));
         }
+        Some(output)
+    }
+
+    fn format_override_command(&self) -> String {
+        let mut output = String::new();
+        output.push('\n');
+        output.push_str(&format!(
+            "{}\n",
+            output::section_header("To override this resource, run the following command:")
+        ));
+        output.push_str(&format!(
+            "{}\n",
+            output::command(&format!(
+                "regolith-configure set-resource {} \"<custom_value>\"",
+                self.resource_name
+            ))
+        ));
+        output
+    }
+
+    fn format_try_summary_or_full_message(&self) -> String {
+        format!(
+            "{}\n",
+            output::hint("Try --summary or --full to see more details.")
+        )
+    }
+
+    fn format_try_full_message(&self) -> String {
+        format!(
+            "{}\n",
+            output::hint("Use --full to see related resources and configuration usages.")
+        )
+    }
+
+    fn format_minimal(&self) -> String {
+        let mut output = String::new();
+
+        if !self.has_exact_match {
+            output.push_str(&self.format_no_match_message(&format!(
+                "No exact match found for '{}'. Try --summary or --full to see related resources.\n",
+                self.resource_name
+            )));
+            return output;
+        }
+
+        if let Some(s) = self.format_runtime_value() {
+            output.push_str(&s);
+        }
+        output.push_str(&self.format_try_summary_or_full_message());
+
+        output
+    }
+
+    fn format_summary(&self) -> String {
+        let mut output = String::new();
+
+        if !self.has_exact_match {
+            output.push_str(&self.format_no_match_message(
+                "Didn't find an exact match. Showing related resources instead.\n",
+            ));
+            if let Some(s) = self.format_related_resources() {
+                output.push_str(&s);
+            }
+        } else {
+            output.push_str(&self.format_resource_query_header());
+            if let Some(s) = self.format_runtime_value() {
+                output.push_str(&s);
+            }
+            if let Some(s) = self.format_default_value() {
+                output.push_str(&s);
+            }
+            if let Some(s) = self.format_custom_override() {
+                output.push_str(&s);
+            }
+
+            output.push_str(&self.format_override_command());
+            output.push('\n');
+            output.push_str(&self.format_try_full_message());
+        }
+
+        output
+    }
+
+    fn format_full(&self) -> String {
+        let mut output = String::new();
+
+        if !self.has_exact_match {
+            output.push_str(&self.format_no_match_message(
+                "Didn't find an exact match. Showing related resources instead.\n",
+            ));
+
+            if let Some(s) = self.format_related_resources() {
+                output.push_str(&s);
+            }
+        } else {
+            output.push_str(&self.format_resource_query_header());
+            if let Some(s) = self.format_runtime_value() {
+                output.push_str(&s);
+            }
+            if let Some(s) = self.format_default_value() {
+                output.push_str(&s);
+            }
+            if let Some(s) = self.format_custom_override() {
+                output.push_str(&s);
+            }
+        }
 
         if self.has_exact_match {
-            output.push('\n');
-            output.push_str(&format!(
-                "{}\n",
-                output::section_header("To override this resource, run the following command:")
-            ));
-            output.push_str(&format!(
-                "{}\n",
-                output::command(&format!(
-                    "regolith-configure set-resource {} \"<custom_value>\"",
-                    self.resource_name
-                ))
-            ));
+            if let Some(s) = self.format_configuration_lines() {
+                output.push_str(&s);
+            }
+            output.push_str(&self.format_override_command());
         }
 
         output

@@ -49,3 +49,7 @@ pub fn similar_item(s: &str) -> colored::ColoredString {
 pub fn in_use(s: &str) -> colored::ColoredString {
     s.green().italic()
 }
+
+pub fn hint(s: &str) -> colored::ColoredString {
+    s.dimmed().italic()
+}
