@@ -1,14 +1,14 @@
 use std::path::Path;
 
-use anyhow::{anyhow, Result};
-use clap::{error::ErrorKind, CommandFactory, Parser};
+use anyhow::{Result, anyhow};
+use clap::{CommandFactory, Parser, error::ErrorKind};
 use regolith_config::{
+    FullConfig,
     cli_args::{self, CLIArguments, Session},
     config::xresources::set_user_xresource,
     get_session_type,
     resources::{ResourceProvider, TrawlResourceProvider, XrdbResourceProvider},
     search::search_config,
-    FullConfig,
 };
 
 fn main() -> Result<()> {
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
                 // $XDG_SESSION_TYPE is not available
                 let cmd = CLIArguments::command();
                 let expected_usage = format!(
-                    "{} --session=<SESSION> [OPTIONS] <COMMAND>",
+                    "{} [--session=<SESSION>] [OPTIONS] <COMMAND>",
                     env!("CARGO_PKG_NAME")
                 );
                 cmd.override_usage(expected_usage)

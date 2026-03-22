@@ -6,7 +6,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 #[command(about = "Help users edit, manage and search for configiurations", long_about = None)]
 pub struct CLIArguments {
     /// Optional if $XDG_DESKTOP_PORTAL is defined
-    #[arg(short, long, value_enum)]
+    #[arg(short, long, global = true, value_enum)]
     session: Option<Session>,
 
     #[command(subcommand)]
@@ -54,7 +54,7 @@ pub enum FilterType {
 #[derive(Args, Debug)]
 pub struct SearchArgs {
     /// Define filtering stratergy
-    #[arg(short, long, value_enum)]
+    #[arg(value_enum)]
     filter: FilterType,
     pattern: String,
 }
@@ -79,10 +79,10 @@ impl SearchArgs {
 #[derive(Args, Debug)]
 pub struct EjectArgs {
     /// Define filtering stratergy
-    #[arg(short, long, value_enum)]
+    #[arg(value_enum)]
     filter: FilterType,
     /// File to write to
-    #[arg(short, long, value_enum)]
+    #[arg(short, long)]
     output: Option<String>,
     pattern: String,
 }
