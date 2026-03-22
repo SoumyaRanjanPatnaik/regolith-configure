@@ -1,12 +1,22 @@
+//! X11 resource provider using xrdb.
+
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::process::Command;
 
 use super::ResourceProvider;
 
+/// Resource provider for X11 sessions using the `xrdb` command.
+///
+/// Retrieves resources by querying the X resource database via `xrdb -query`.
 pub struct XrdbResourceProvider;
 
 impl ResourceProvider for XrdbResourceProvider {
+    /// Retrieves all X resources from the X resource database.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the `xrdb` command cannot be executed.
     fn get_all_resources(&self) -> Result<HashMap<String, String>> {
         let output = Command::new("xrdb")
             .arg("-query")

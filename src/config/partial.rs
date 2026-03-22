@@ -1,3 +1,8 @@
+//! Individual config file representation.
+//!
+//! This module provides [`ConfigPartial`] for representing a single
+//! configuration file and extracting its imports, variables, and bindings.
+
 use anyhow::{anyhow, Context, Result};
 use glob::glob;
 use std::{
@@ -7,13 +12,20 @@ use std::{
 
 use crate::search;
 
+/// A single configuration file.
+///
+/// Represents the contents of a window manager config file (i3 or sway)
+/// and provides methods to extract its components.
 #[derive(Debug)]
 pub struct ConfigPartial {
+    /// Path to the config file.
     pub file_name: PathBuf,
+    /// Raw contents of the config file.
     pub config: String,
 }
 
 impl ConfigPartial {
+    /// Creates a new config partial from a file path and contents.
     pub fn new(file_name: &Path, config: &str) -> Self {
         Self {
             file_name: file_name.to_path_buf(),
@@ -21,6 +33,19 @@ impl ConfigPartial {
         }
     }
 
+    /// Resolves all `include` directives in this config.
+    ///
+    /// Handles both relative and absolute paths, as well as glob patterns.
+    /// Relative paths are resolved relative to this config's directory.
+    ///
+    /// # Returns
+    ///
+    /// A vector of paths to included files. Non-existent paths matching
+    /// a glob pattern are silently skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a glob pattern is invalid.
     pub fn get_imported_paths(&self) -> Result<Vec<PathBuf>> {
         let mut imports = Vec::new();
         for line in self.config.lines() {
@@ -61,6 +86,19 @@ impl ConfigPartial {
         Ok(imports)
     }
 
+    /// Extracts variable definitions from this config.
+    ///
+    /// Recognizes `set $var value` and `set_from_resource $var name default`
+    /// directives. For `set_from_resource`, the value is resolved from the
+    /// provided resources map, falling back to the default if not found.
+    ///
+    /// # Arguments
+    ///
+    /// * `trawl_resources` - Map of resource names to their runtime values
+    ///
+    /// # Returns
+    ///
+    /// An iterator of (variable_name, resolved_value) pairs.
     pub fn config_variables(
         &self,
         trawl_resources: &HashMap<String, String>,
@@ -86,6 +124,20 @@ impl ConfigPartial {
         })
     }
 
+    /// Extracts keybinding definitions from this config.
+    ///
+    /// Recognizes `bindsym` and `bindcode` directives. Variable references
+    /// in bindings (e.g., `$mod+Return`) are resolved using the provided
+    /// variables map. Options like `--release` are stripped from the binding.
+    ///
+    /// # Arguments
+    ///
+    /// * `variables` - Map of variable names to their resolved values
+    ///
+    /// # Returns
+    ///
+    /// An iterator of `BindingDef` instances with both original and
+    /// normalized binding strings.
     pub fn config_bindings<'a>(
         &'a self,
         variables: &BTreeMap<String, String>,

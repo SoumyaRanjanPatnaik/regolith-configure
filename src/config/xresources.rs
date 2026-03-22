@@ -1,23 +1,57 @@
+//! Xresources file parsing.
+//!
+//! This module provides types for parsing Xresources files, which store
+//! X11 resource definitions in `key: value` format with support for
+//! `#include` directives.
+
 use anyhow::{Context, Result};
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+/// A single key-value entry from an Xresources file.
 #[derive(Debug, Clone)]
 pub struct XresourceEntry {
+    /// The resource key (left of the colon).
     pub key: String,
+    /// The resource value (right of the colon).
     pub value: String,
+    /// Path to the file containing this entry.
     pub file_path: PathBuf,
+    /// Line number (1-indexed) where this entry was found.
     pub line_number: usize,
 }
 
+/// A parsed Xresources configuration.
+///
+/// Parses Xresources files following the standard format:
+/// - Lines starting with `!` are comments
+/// - Empty lines are ignored
+/// - `#include "path"` directives are followed recursively
+/// - `key: value` lines define resource entries
 #[derive(Debug)]
 pub struct XresourceConfig {
     entries: Vec<XresourceEntry>,
 }
 
 impl XresourceConfig {
+    /// Parses an Xresources file and all its includes.
+    ///
+    /// # Arguments
+    ///
+    /// * `root_path` - Path to the root Xresources file
+    ///
+    /// # Returns
+    ///
+    /// A `XresourceConfig` containing all entries from the root file
+    /// and all included files. Cyclic includes are handled by skipping
+    /// already-visited files.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the root file cannot be opened or read,
+    /// or if any included file cannot be resolved.
     pub fn new<P: AsRef<Path>>(root_path: P) -> Result<Self> {
         let root_path = root_path.as_ref();
         let mut entries = Vec::new();
@@ -91,15 +125,25 @@ impl XresourceConfig {
         Ok(())
     }
 
+    /// Returns all parsed resource entries.
     pub fn get_all_entries(&self) -> &[XresourceEntry] {
         &self.entries
     }
 
+    /// Finds an entry by exact key match.
+    ///
+    /// Returns the first entry with a matching key, or `None` if not found.
+    /// Key matching is case-sensitive.
     pub fn get_entry(&self, key: &str) -> Option<&XresourceEntry> {
         self.entries.iter().find(|entry| entry.key == key)
     }
 }
 
+/// Returns the path to the user's Xresources file.
+///
+/// The path is `$HOME/.config/regolith3/Xresources`, or
+/// `.config/regolith3/Xresources` relative to the current directory
+/// if `$HOME` is not set.
 pub fn get_user_xresources_path() -> PathBuf {
     match std::env::var("HOME") {
         Ok(home) => PathBuf::from(home)

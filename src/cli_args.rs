@@ -1,5 +1,12 @@
+//! CLI argument types and session detection.
+//!
+//! This module provides the command-line interface types for the
+//! regolith-configure tool, including session types, filter options,
+//! and operation-specific arguments.
+
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+/// Command-line arguments for regolith-configure.
 #[derive(Parser, Debug)]
 #[command(name = "rust-config")]
 #[command(version = "0.1.0")]
@@ -14,15 +21,18 @@ pub struct CLIArguments {
 }
 
 impl CLIArguments {
+    /// Returns the explicitly specified session, if any.
     pub fn session(&self) -> Option<Session> {
         self.session
     }
 
+    /// Returns the operation to perform.
     pub fn sub_command(&self) -> &OperationType {
         &self.sub_command
     }
 }
 
+/// Available operations for regolith-configure.
 #[derive(Subcommand, Debug)]
 pub enum OperationType {
     /// Get the deatils for a resource, keybinding, package or config file
@@ -38,12 +48,14 @@ pub enum OperationType {
     SetResource(SetResourceArgs),
 }
 
+/// Display server session type.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum Session {
     Wayland,
     X11,
 }
 
+/// Search filter type for narrowing results.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum FilterType {
     Bindings,
@@ -51,6 +63,7 @@ pub enum FilterType {
     Resource,
 }
 
+/// Arguments for the search operation.
 #[derive(Args, Debug)]
 pub struct SearchArgs {
     /// Define filtering stratergy
@@ -60,6 +73,7 @@ pub struct SearchArgs {
 }
 
 impl SearchArgs {
+    /// Creates new search arguments with the given pattern and filter.
     pub fn new(pattern: &str, filter: FilterType) -> Self {
         Self {
             filter,
@@ -67,15 +81,18 @@ impl SearchArgs {
         }
     }
 
+    /// Returns the filter type for this search.
     pub fn filter(&self) -> FilterType {
         self.filter
     }
 
+    /// Returns the search pattern.
     pub fn pattern(&self) -> &str {
         &self.pattern
     }
 }
 
+/// Arguments for the eject operation.
 #[derive(Args, Debug)]
 pub struct EjectArgs {
     /// Define filtering stratergy
@@ -88,22 +105,27 @@ pub struct EjectArgs {
 }
 
 impl EjectArgs {
+    /// Returns the filter type for this eject operation.
     pub fn filter(&self) -> FilterType {
         self.filter
     }
 
+    /// Returns the output file path, if specified.
     pub fn output(&self) -> Option<&String> {
         self.output.as_ref()
     }
 
+    /// Returns the pattern to match.
     pub fn pattern(&self) -> &str {
         &self.pattern
     }
 }
 
+/// Arguments for the reconcile operation.
 #[derive(Args, Debug)]
 pub struct ReconcileArgs {}
 
+/// Arguments for the set-resource operation.
 #[derive(Args, Debug)]
 pub struct SetResourceArgs {
     /// The resource name to set
@@ -114,15 +136,22 @@ pub struct SetResourceArgs {
 }
 
 impl SetResourceArgs {
+    /// Returns the resource name to set.
     pub fn resource(&self) -> &str {
         &self.resource
     }
 
+    /// Returns the value to assign.
     pub fn value(&self) -> &str {
         &self.value
     }
 }
 
+/// Detects the current session type from the environment.
+///
+/// Returns `Some(Session)` if `$XDG_SESSION_TYPE` is set to exactly
+/// `"wayland"` or `"x11"`. Returns `None` for any other value or if
+/// the variable is not set.
 pub fn get_session_type() -> Option<Session> {
     std::env::vars().find_map(|(name, value)| match name.as_str() {
         "XDG_SESSION_TYPE" => match value.as_str() {

@@ -1,11 +1,17 @@
+//! Keyword search functionality.
+
 use std::{fmt::Display, path::PathBuf};
 
 use crate::FullConfig;
 
+/// A single line matching a keyword search.
 #[derive(Debug)]
 pub struct KeywordDef {
+    /// Path to the file containing the match.
     pub file_path: PathBuf,
+    /// Line number (1-indexed) of the match.
     pub line_number: usize,
+    /// The full line contents.
     pub line_contents: String,
 }
 
@@ -21,6 +27,7 @@ impl Display for KeywordDef {
     }
 }
 
+/// Result of a keyword search.
 #[derive(Debug)]
 pub struct KeywordSearchResult(pub Vec<KeywordDef>);
 
@@ -36,6 +43,19 @@ impl Display for KeywordSearchResult {
     }
 }
 
+/// Searches for lines containing the given keyword.
+///
+/// Matching is case-insensitive substring matching. All lines in all
+/// config partials are searched.
+///
+/// # Arguments
+///
+/// * `keyword` - The keyword to search for
+/// * `config` - The configuration to search within
+///
+/// # Returns
+///
+/// A `KeywordSearchResult` containing all matching lines.
 pub fn search_keyword_result(keyword: &str, config: &FullConfig) -> KeywordSearchResult {
     let keyword_lower = keyword.to_lowercase();
     let results: Vec<_> = config

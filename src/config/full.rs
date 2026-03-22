@@ -1,3 +1,8 @@
+//! Full configuration loading and aggregation.
+//!
+//! This module provides [`FullConfig`] for loading a complete window manager
+//! configuration by recursively discovering all included config files.
+
 use anyhow::Result;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, LinkedList},
@@ -11,15 +16,39 @@ use crate::search;
 
 use super::partial::ConfigPartial;
 
+/// Mapping from session types to their root config paths.
+///
+/// Each tuple maps a [`Session`] variant to the path of its root
+/// configuration file (e.g., `/etc/regolith/i3/config` for X11).
 pub type SessionMappings = [(Session, &'static Path)];
 
+/// A complete window manager configuration.
+///
+/// Contains all config partials discovered by recursively following
+/// `include` directives from the root config file.
 #[derive(Debug)]
 pub struct FullConfig {
     _config_root: PathBuf,
+    /// All discovered config partials, including the root config.
     pub partials: Vec<ConfigPartial>,
 }
 
 impl FullConfig {
+    /// Loads a complete configuration for the given session.
+    ///
+    /// # Arguments
+    ///
+    /// * `session` - The session type (X11 or Wayland)
+    /// * `session_mappings` - Mapping from session types to root config paths
+    ///
+    /// # Returns
+    ///
+    /// A `FullConfig` containing the root config and all included configs.
+    /// Includes are discovered recursively; cyclic includes are skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the root config file cannot be opened or read.
     pub fn new_from_session<'a>(
         session: Session,
         session_mappings: &'a SessionMappings,
@@ -79,6 +108,19 @@ impl FullConfig {
         Ok(dicovered_config_partials)
     }
 
+    /// Collects all variables defined across all config partials.
+    ///
+    /// Variables are defined via `set` or `set_from_resource` directives.
+    /// For `set_from_resource`, the value is resolved from the provided
+    /// resources map, falling back to the default if not found.
+    ///
+    /// # Arguments
+    ///
+    /// * `trawl_resources` - Map of resource names to their runtime values
+    ///
+    /// # Returns
+    ///
+    /// A `BTreeMap` of variable names to their resolved values.
     pub fn get_all_variables(
         &self,
         trawl_resources: &HashMap<String, String>,
@@ -89,6 +131,19 @@ impl FullConfig {
             .collect()
     }
 
+    /// Collects all keybindings defined across all config partials.
+    ///
+    /// Bindings are defined via `bindsym` or `bindcode` directives.
+    /// Variable references in bindings are resolved using the provided
+    /// variables map.
+    ///
+    /// # Arguments
+    ///
+    /// * `variables` - Map of variable names to their resolved values
+    ///
+    /// # Returns
+    ///
+    /// A `BindingsSearchResult` containing all discovered bindings.
     pub fn get_all_bindings(
         &'_ self,
         variables: &BTreeMap<String, String>,

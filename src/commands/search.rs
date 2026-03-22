@@ -1,3 +1,5 @@
+//! Configuration search functionality.
+
 use std::fmt::Display;
 
 use crate::cli_args::FilterType;
@@ -5,9 +7,15 @@ use crate::resources::ResourceProvider;
 use crate::search::{bindings, keyword, resource};
 use crate::FullConfig;
 
+/// Result of a configuration search operation.
+///
+/// The variant depends on the filter type used in the search.
 pub enum SearchResult<'a> {
+    /// Results from a bindings search.
     Bindings(bindings::BindingsSearchResult<'a>),
+    /// Results from a keyword search.
     Keyword(keyword::KeywordSearchResult),
+    /// Results from a resource search.
     Resource(resource::ResourceSearchResult),
 }
 
@@ -21,6 +29,19 @@ impl<'a> Display for SearchResult<'a> {
     }
 }
 
+/// Searches the configuration for entries matching the given pattern.
+///
+/// # Arguments
+///
+/// * `filter` - The type of search to perform
+/// * `pattern` - The search pattern (case-insensitive matching)
+/// * `config` - The configuration to search within
+/// * `provider` - Resource provider for runtime resource values
+///
+/// # Returns
+///
+/// `Some(SearchResult)` containing matching entries. Returns `None` only
+/// if the resource provider fails for a bindings search.
 pub fn search_config<'a>(
     filter: FilterType,
     pattern: &str,

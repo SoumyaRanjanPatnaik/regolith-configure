@@ -1,3 +1,5 @@
+//! User Xresource modification.
+
 use anyhow::{Context, Result};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -5,6 +7,27 @@ use std::path::PathBuf;
 
 use crate::config::xresources::get_user_xresources_path;
 
+/// Sets or updates an X resource in the user's Xresources file.
+///
+/// The user's Xresources file is located at `$HOME/.config/regolith3/Xresources`.
+/// If the file does not exist, it is created along with any necessary parent
+/// directories.
+///
+/// If the key already exists (case-insensitive match), its value is updated.
+/// Otherwise, the new key-value pair is appended to the file.
+///
+/// # Arguments
+///
+/// * `key` - The resource name to set
+/// * `value` - The value to assign to the resource
+///
+/// # Returns
+///
+/// The path to the modified Xresources file.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be created, read, or written.
 pub fn set_user_xresource(key: &str, value: &str) -> Result<PathBuf> {
     let xresources_path = get_user_xresources_path();
 

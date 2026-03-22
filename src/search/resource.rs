@@ -1,3 +1,5 @@
+//! X resource search functionality.
+
 use std::{
     cmp::Ordering,
     collections::BTreeSet,
@@ -13,29 +15,46 @@ use crate::{
 const MAX_SIMILAR_EDIT_SCORE: usize = 10;
 const MAX_SIMILAR_RESULTS: usize = 5;
 
+/// A line in a config file that uses a resource.
 #[derive(Debug)]
 pub struct ResourceUsageDef {
+    /// Path to the file containing the usage.
     pub file_path: PathBuf,
+    /// Line number (1-indexed) of the usage.
     pub line_number: usize,
+    /// The full line contents.
     pub line_contents: String,
 }
 
+/// A user override for a resource in their Xresources file.
 #[derive(Debug)]
 pub struct ResourceOverrideDef {
+    /// Path to the Xresources file.
     pub file_path: PathBuf,
+    /// Line number (1-indexed) of the override.
     pub line_number: usize,
+    /// The override value.
     pub value: String,
 }
 
+/// Result of a resource search.
 #[derive(Debug)]
 pub struct ResourceSearchResult {
+    /// The queried resource name.
     pub resource_name: String,
+    /// Whether an exact match was found.
     pub has_exact_match: bool,
+    /// The current runtime value, if available.
     pub runtime_value: Option<String>,
+    /// The default value from `set_from_resource`, if defined.
     pub default_value: Option<String>,
+    /// All config lines that use this resource.
     pub usages: Vec<ResourceUsageDef>,
+    /// User overrides in the Xresources file.
     pub overrides: Vec<ResourceOverrideDef>,
+    /// All resources matching the query (substring match).
     pub matched_resources: Vec<String>,
+    /// Similar resources (fuzzy match for typos).
     pub similar_resources: Vec<String>,
 }
 
@@ -116,6 +135,24 @@ fn collect_similar_resources(query: &str, candidates: &BTreeSet<String>) -> Vec<
         .collect()
 }
 
+/// Searches for information about an X resource.
+///
+/// Returns comprehensive information about a resource including:
+/// - Its runtime value (if available from the provider)
+/// - Its default value (from `set_from_resource` directives)
+/// - All config lines that use it
+/// - User overrides in the Xresources file
+/// - Similar resources (for fuzzy matching/typos)
+///
+/// # Arguments
+///
+/// * `resource` - The resource name to search for
+/// * `config` - The configuration to search within
+/// * `provider` - Resource provider for runtime values
+///
+/// # Returns
+///
+/// A `ResourceSearchResult` with all available information about the resource.
 pub fn search_resource_result(
     resource: &str,
     config: &FullConfig,
