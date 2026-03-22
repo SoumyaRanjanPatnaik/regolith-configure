@@ -413,7 +413,8 @@ impl ResourceSearchResult {
         output.push_str(&format!(
             "{}\n",
             output::command(&format!(
-                "regolith-configure set-resource {} \"<custom_value>\"",
+                "{} set-resource {} \"<custom_value>\"",
+                env!("CARGO_PKG_NAME"),
                 self.resource_name
             ))
         ));
